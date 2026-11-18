@@ -1,6 +1,6 @@
 # Known Issues
 
-This is a plain-language summary of current limitations and quirks in DMUD, grouped by area. Every item links to its tracked issue on the [issue tracker](https://github.com/dtrammell/dmud/issues); read the issue for reproduction steps and suggested fixes. Everything here was verified against commit `e3d2c09` on `main`, either by reading the source or by running `test_game.rb` (Ruby 4.0.5; the original reports used Ruby 3.4.6 and saw the same behavior).
+This is a plain-language summary of current limitations and quirks in DMUD, grouped by area. Every item links to its tracked issue on the [issue tracker](https://github.com/dtrammell/dmud/issues); read the issue for reproduction steps and suggested fixes. Everything here was checked against commit `e3d2c09` on `main`: either read directly in the source, or reproduced by running `test_game.rb` with piped input on Ruby 4.0.5 (the issues filed by the tester bot, #1–#11, were originally reported from Ruby 3.4.6 — each was independently re-checked here on 4.0.5 rather than assumed to still apply).
 
 ## World-building API ergonomics
 
@@ -23,7 +23,7 @@ This is a plain-language summary of current limitations and quirks in DMUD, grou
 
 - **`Session.new` never returns** ([#16](https://github.com/dtrammell/dmud/issues/16)). `Session#initialize` calls `self.start`, which is an infinite `loop`, so construction and "running the game" are the same call. A world file can't keep a reference to the session once it's created, run more than one, or hand it off to anything else; the `session = Session.new(...)` line in `test_game.rb` never completes while the game is running. The loop also calls `sleep 1` after every single command, and stores `@player.query`'s result in a local variable that's never used.
 - **Ctrl-D / EOF at the prompt crashes the game** ([#5](https://github.com/dtrammell/dmud/issues/5)). `Readline.readline` returns `nil` on EOF, and `Player#query` immediately calls `.match` on whatever it got back, raising `NoMethodError`. This is a known, already-tracked failure mode, not a sign that something else broke — it will happen any time piped input runs out or a user presses Ctrl-D.
-- **The prompt shows a literal `\n` and redraws multiple times on modern Ruby** ([#6](https://github.com/dtrammell/dmud/issues/6)). `Player#query`'s prompt string has an embedded newline (`"\n%s: Command> "`); Ruby's Reline-backed `Readline` (observed on both 3.4.6 and 4.0.5) doesn't render it as a real line break, so the raw `\n` characters and a repeated prompt show up in the terminal.
+- **The prompt shows a literal `\n` and redraws multiple times on modern Ruby** ([#6](https://github.com/dtrammell/dmud/issues/6)). `Player#query`'s prompt string has an embedded newline (`"\n%s: Command> "`); Ruby's Reline-backed `Readline` doesn't render it as a real line break, so the raw `\n` characters and a repeated prompt show up in the terminal — originally reported on Ruby 3.4.6, reproduced here on Ruby 4.0.5.
 
 ## Gates and movement
 

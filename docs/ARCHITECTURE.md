@@ -126,7 +126,7 @@ This is the one method worth reading in full, because several open issues live i
 1. Stores the incoming object in `@object` — an **instance variable on the Gate itself**, not a local variable or method argument. Because a `Gate` is a single shared object, two objects (two players, or a player and an NPC) traversing the same gate overwrite each other's `@object`, `@source_area`, and `@destination_area`. This is fine for a single-player game and unsafe the moment there's more than one simultaneous traveler ([#12](https://github.com/dtrammell/dmud/issues/12)).
 2. **If `@game_entrance` is true**, unconditionally sets `object.location = @areas[0][:object]` — the *first* area that was ever linked to this gate — regardless of where the object's `location` actually was a moment ago. This is the "no source area" workaround for a brand-new connection (see [The game-entrance gate](#the-game-entrance-gate) below).
 3. Searches `@areas` for an entry whose `object` equals the traveling object's (possibly just-overwritten) `location`; if none matches, sets `@source_area = nil` and raises.
-4. If `@traversable` is false, messages the object and raises. (Nothing in the codebase can currently make this true, so this branch is dead code today — [#17](https://github.com/dtrammell/dmud/issues/17).)
+4. If `@traversable` is false, messages the object and raises. `@traversable` is set to `true` in `initialize` and nothing else in the codebase ever assigns to it — there is no accessor, so no caller can set it to `false` — so this branch can never actually run today; it's dead code until something gives `Gate` a way to mark itself non-traversable ([#17](https://github.com/dtrammell/dmud/issues/17)).
 5. Calls `self.gate_specific` (a no-op today) and messages `"You have entered the '<name>' Gate"`.
 6. Picks a destination based on `@areas.count`:
    - **0 areas:** raises `"ERROR: This Gate has no Areas configured."`
@@ -187,7 +187,7 @@ A `MobileObject` driven by a human at a terminal: it owns the command table, the
 - **State — `@commands`:** a `Hash` of symbol → `{ type:, match:, ... }`; see [Command matching](#command-matching) below for the full table.
 - **Public API:**
   - `message(message)` — overrides the no-op base version with `puts message`. This is the only place game text actually reaches the terminal; a `# TODO` comment notes this should eventually be routed to "the player's console" instead of a bare `puts`, presumably once networking exists.
-  - `query` — prompts with `Readline.readline(@prompt, true)` (the `true` adds each line to Readline history), where `@prompt` is `"\n%s: Command> "` with the player's name interpolated. **The embedded `\n` inside the prompt string is not rendered correctly by Ruby's Reline-backed `Readline` on modern Ruby (observed on 3.4.6 and 4.0.5): the prompt is drawn multiple times per turn and a literal backslash-n shows up in the output** ([#6](https://github.com/dtrammell/dmud/issues/6)). If input is `nil` (Ctrl-D / EOF), the next line calls `input.match(...)` on `nil` and raises `NoMethodError`, crashing the whole process ([#5](https://github.com/dtrammell/dmud/issues/5) — this is expected and already tracked). Otherwise, it **iterates every entry** in `@commands` (it does not stop at the first match), printing `"  MATCH!!! (...)"` or `"  No match (...)"` for each one **unconditionally, with no `$DEBUG` guard** ([#3](https://github.com/dtrammell/dmud/issues/3)), and calling `self.command(key, hash, input.chomp)` for every entry whose regex matches. Because the placeholder `:somecommand` entry's pattern is the empty regex `//` (which matches every string, including `""`), `validcommand` is always set `true` — the final `self.message "Invalid Command" if validcommand == false` line can never actually run ([#2](https://github.com/dtrammell/dmud/issues/2)).
+  - `query` — prompts with `Readline.readline(@prompt, true)` (the `true` adds each line to Readline history), where `@prompt` is `"\n%s: Command> "` with the player's name interpolated. **The embedded `\n` inside the prompt string is not rendered correctly by Ruby's Reline-backed `Readline`: the prompt is drawn multiple times per turn and a literal backslash-n shows up in the output** — originally reported on Ruby 3.4.6 ([#6](https://github.com/dtrammell/dmud/issues/6)), and reproduced here on Ruby 4.0.5 by running `test_game.rb` with piped input. If input is `nil` (Ctrl-D / EOF), the next line calls `input.match(...)` on `nil` and raises `NoMethodError`, crashing the whole process ([#5](https://github.com/dtrammell/dmud/issues/5) — this is expected and already tracked). Otherwise, it **iterates every entry** in `@commands` (it does not stop at the first match), printing `"  MATCH!!! (...)"` or `"  No match (...)"` for each one **unconditionally, with no `$DEBUG` guard** ([#3](https://github.com/dtrammell/dmud/issues/3)), and calling `self.command(key, hash, input.chomp)` for every entry whose regex matches. Because the placeholder `:somecommand` entry's pattern is the empty regex `//` (which matches every string, including `""`), `validcommand` is always set `true` — the final `self.message "Invalid Command" if validcommand == false` line can never actually run ([#2](https://github.com/dtrammell/dmud/issues/2)).
   - `command(command, hash, input)` — dispatches on `hash[:type]`:
     - `:generic` — empty branch, does nothing. This is what runs for the always-matching `:somecommand` placeholder.
     - `:extended` — an inner `case command` with **only one branch implemented, `:move`**. `:say`, `:look`, and `:inventory` are registered and matched in `query`, but there is no branch for them here, so they silently do nothing ([#15](https://github.com/dtrammell/dmud/issues/15)).
@@ -250,8 +250,8 @@ sequenceDiagram
     SourceArea->>SourceArea: contents.delete(self)
     SourceArea->>Gate: enter(self)  [Gate#enter]
     Gate->>Gate: resolve destination area
-    Gate->>DestArea: exit(destination)  [Gate#exit]
-    Gate->>DestArea: destination.enter(self)  [Area#enter]
+    Gate->>Gate: exit(destination)  [Gate#exit]
+    Gate->>DestArea: enter(self)  [Area#enter]
     DestArea->>DestArea: contents << self
     DestArea-->>Player: message(describe)
 ```
@@ -278,7 +278,7 @@ See [Session](#session-class_sessionrb) above for the full per-turn behavior (Ex
 
 ## The `$DEBUG` flag
 
-`$DEBUG` is Ruby's built-in global, normally set by running `ruby -d` or `ruby --debug`. In this codebase it is checked in exactly two places:
+`$DEBUG` is Ruby's built-in global, normally set by running `ruby -d` or `ruby --debug`. In this codebase it is checked in exactly three places:
 
 - `Area#initialize` — prints `"Area '<name>' (ID:<uuid>) Initialized"` for every area created, only if `$DEBUG`.
 - `Area#describe` — adds the clear-screen/cursor-home escape codes and omits the area's own `(ID:...)` suffix only when `$DEBUG` is **falsy** (i.e., the clear-screen is the normal, non-debug behavior); shows the area's own ID only when `$DEBUG` is **truthy**.

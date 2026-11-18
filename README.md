@@ -44,12 +44,12 @@ walkthrough of the example world.
 
 ## Requirements
 
-- **Ruby.** The example world and commands below were verified against
-  **Ruby 4.0.5** (this repo's development machine) and the project's issue
-  history also references **Ruby 3.4.6**. No `Gemfile`, gemspec, or
-  `.ruby-version` file pins a version yet; there is no reason to expect
-  anything below Ruby 3.x to work, since the code relies on `Readline` behavior
-  found in modern Ruby's Reline-backed implementation.
+- **Ruby.** The example world and commands below were tested on
+  **Ruby 4.0.5** (this repo's development machine) and, per the project's
+  issue history, also run on **Ruby 3.4.6** (the environment the original
+  bug reports were filed from). No `Gemfile`, gemspec, or `.ruby-version`
+  file pins a version, and the code has not been tested on anything older —
+  treat other versions as untested rather than assumed-compatible.
 - **Standard library only:** `readline` (command-line editing/history/tab
   completion) and `securerandom` (object IDs). No third-party gems.
 
@@ -91,10 +91,20 @@ prints unconditionally, regardless of `$DEBUG` ([#3](https://github.com/dtrammel
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#the-debug-flag) for where
 `$DEBUG` is actually checked today.
 
-A worked example, from a real run:
+A worked example, from a real run (stdout only; stderr, which carries the
+Ctrl-D crash from #5, is omitted since nothing was pressed to trigger it).
+The only editing done to this transcript is stripping the ANSI cursor-control
+and clear-screen escape bytes so it's readable in Markdown — the debug
+`MATCH!!!`/`No match` lines ([#3](https://github.com/dtrammell/dmud/issues/3)),
+the per-item `(ID:...)` suffix ([#3](https://github.com/dtrammell/dmud/issues/3)),
+and the literal `\n` text in the repeated prompt
+([#6](https://github.com/dtrammell/dmud/issues/6)) are all exactly what printed:
 
 ```
-Leeroy Jenkins: Command> move foyer
+Exits:
+  > Foyer
+\nLeeroy Jenkins: Command> \nLeeroy Jenkins: Command> move foyer
+  MATCH!!! (move foyer vs. (?-mix:^m |^move |^go |^walk |^run ))
 You have entered the 'Game Entrance' Gate
 You traverse the gate...
 You have exited the 'Game Entrance' Gate
@@ -103,11 +113,16 @@ Location: Foyer
 The Foyer is large and inviting.  You see Stairs to the right and an entrance to a Grand Hall directly ahead.
 
 Foyer contains:
-  * Leeroy Jenkins
+  * Leeroy Jenkins (ID:565f8f5c-f239-49cb-92e5-1dbc25e1d8fc)
 
+  No match (move foyer vs. (?-mix:^s |^say |^talk |^yell ))
+  No match (move foyer vs. (?-mix:^l |^look |^inspect ))
+  No match (move foyer vs. (?-mix:^i |^inventory ))
+  MATCH!!! (move foyer vs. (?-mix:))
 Exits:
   > Grand Hall
   > Stairs
+\nLeeroy Jenkins: Command> \nLeeroy Jenkins: Command>
 ```
 
 ## Writing your own world
