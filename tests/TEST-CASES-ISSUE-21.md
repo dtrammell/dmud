@@ -1,6 +1,7 @@
 # DMUD — Test Case Design: Issue #21 Low-Hanging-Fixes Batch + Gem Packaging
 
-SE run #1502, step 3 (Quality Assurance). This is a **test design document**,
+SE run #1502, step 3 (Quality Assurance), **revised per step 4 review**
+(NOVA, Project Leadership, 2026-11-20). This is a **test design document**,
 not an implementation. No minitest code lives here; the runnable suite will
 live in `test/` and run via `rake test`, per the agreed design in
 [#21](https://github.com/dtrammell/dmud/issues/21).
@@ -8,15 +9,26 @@ live in `test/` and run via `rake test`, per the agreed design in
 Base commit: `c57546a3b09153a5276ae407677d6836197bc11c` on `main`.
 Branch: `feature/issue-21-low-hanging-batch`.
 
-Every expected result below is derived from the text of issue #21's "Agreed
-design / acceptance criteria" section (quoted inline as **AC:**), from the
-individual issue bodies/comments (#1–#9, #20), or — where neither says
-anything — from the **unchanged, currently-documented behavior** in
-`docs/ARCHITECTURE.md` / `docs/KNOWN_ISSUES.md` (quoted as **Unchanged:**).
-No expected value in this document was derived by running code. Anywhere I
-had to make a judgment call because the AC is silent or internally tense,
-it's called out inline as **ASSUMPTION** and summarized again in the report
-back to the requester.
+> **Revision note:** the step-3 draft hedged ten points as `ASSUMPTION`
+> because the #21 AC text didn't pin an exact value. Step 4 supplied
+> explicit rulings for all ten, quoted inline below as **RULING:**, and
+> all `ASSUMPTION` language has been replaced with pinned, literal
+> expected values. Step 4 also flagged four defects in the step-3 draft
+> itself (bare-area-name matching that can pass for the wrong reason, a
+> traversal vehicle that silently exercises an out-of-scope quirk,
+> hard-coded gate names that the batch is about to change, and missing
+> guidance on subprocess timeouts given the unchanged per-turn `sleep 1`);
+> all four are fixed below and noted where they land.
+
+Every expected result below is derived from the text of issue #21's
+"Agreed design / acceptance criteria" section (quoted inline as **AC:**),
+the step-4 rulings (quoted as **RULING:**), the individual issue
+bodies/comments (#1–#9, #20), or — where none of those says anything —
+the **unchanged, currently-documented behavior** in `docs/ARCHITECTURE.md`
+/ `docs/KNOWN_ISSUES.md` (quoted as **Unchanged:**), or a plain static
+read of the example-world construction script's source order (quoted as
+**Derived from source order:** — this is reading text, not running code).
+No expected value in this document was derived by running code.
 
 ## Conventions used below
 
@@ -25,25 +37,61 @@ back to the requester.
   `test_game.rb` / the future `examples/` script builds: a `Foyer` with
   gates to `Grand Hall`, `Stairs`, and a `Secret Room` (Secret Room's own
   side marked not-visible, Foyer's side visible — same as today), plus a
-  `Game Entrance` gate from a `Game Lobby` (Lobby's side not-visible). Used
-  for all unit-level construction/command/gate tests so we never have to
-  instantiate `Session` (its constructor runs an infinite loop today —
-  [#16](https://github.com/dtrammell/dmud/issues/16), explicitly out of
-  scope for this batch — so tests must never call `Session.new`).
+  `Game Entrance` gate from a `Game Lobby` (Lobby's side not-visible),
+  with gates attached to Foyer **in the same order the example-world
+  script attaches them today**: entrance gate first, then Grand Hall, then
+  Stairs, then Secret Room. This ordering is load-bearing for TC-1502-050
+  below and is read directly from the example-world script's source, not
+  assumed. Used for all unit-level construction/command/gate tests so we
+  never have to instantiate `Session` (its constructor runs an infinite
+  loop today — [#16](https://github.com/dtrammell/dmud/issues/16),
+  explicitly out of scope — so tests must never call `Session.new`).
+- **Player name convention**: every fixture (Test Fixture World and the
+  real `examples/` script) uses `"Leeroy Jenkins"` as the player name,
+  matching the existing, unchanged constant in today's `test_game.rb`.
+  This makes the pinned goodbye text (see Section G, RULING #6) an exact,
+  literal string rather than a pattern match.
 - **the example world**: whatever single script ships under `examples/`
   after the gem-layout work. Its exact filename isn't specified by #20/#21,
   so tests locate it with `Dir.glob('examples/*.rb')` rather than a
-  hard-coded name, and skip/fail loudly with a clear message if more than
-  one candidate exists.
-- Driving `Player#query` without a real TTY: stub whatever the
-  implementation uses to read a line (today `Readline.readline`; see the
-  readline/reline ambiguity in the report) to return a canned string once,
-  then call `query`/`command` and capture output via `Player#message`
-  override or `$stdout` capture — never pipe into an in-process Readline
-  call expecting a real terminal.
+  hard-coded name, and fail loudly with a clear message if more than one
+  candidate exists.
+- **Gate names are not hard-coded.** Step 4 confirmed the batch gives the
+  example world's gates new player-facing names, so no test in this
+  document asserts a literal gate name string drawn from today's
+  `test_game.rb` (e.g. `"Game Entrance"`, `"Foyer<>Grand Hall Gate"`).
+  Where a test needs to assert output that includes a gate's name, it
+  either (a) builds its own gate in-test and names it itself (e.g. a
+  `TestGate` named `"Toll Gate"`), or (b) reads the name off the real
+  gate object at test time via `gate.metadata[:name]` and asserts against
+  that captured value, never against a literal string.
+- **Driving `Player#query` without a real TTY:** per RULING #10 below,
+  the implementation reads lines via `Reline.readline` directly (not the
+  `Readline` compatibility module). Stub `Reline.readline` to return the
+  given *Input* string once, then call `query`/`command` and capture
+  output via a `Player#message` override or `$stdout` capture.
+- **Subprocess timeouts (defect D):** `Session#start`'s infinite loop
+  still calls `sleep 1` after every single turn (#16, out of scope,
+  unchanged). Every real-subprocess test in Sections G and M therefore has
+  a wall-clock floor of roughly one second per piped command before EOF —
+  e.g. TC-1502-113 pipes 5 commands, so its floor is ~5s. All subprocess
+  tests in this document should be given a **generous timeout, around
+  30 seconds**, not because any single test is expected to take that long,
+  but to absorb that floor plus ordinary CI scheduling jitter without
+  becoming flaky. See TC-1502-118 for the single place this rationale is
+  written out in full.
 - "Automated minitest" = belongs in `test/`, runs under `rake test`,
   must pass unattended. "Manual check" = needs a human, a real terminal/PTY,
   or is otherwise impractical to assert deterministically in CI.
+- **Bare-area-name matching is banned in subprocess-stdout assertions
+  (defect A).** An `Area`'s own description text can legitimately mention
+  *other* area names (e.g. Grand Hall's description says "To the South is
+  the Foyer"), so a test that just greps for `"Grand Hall"` appearing
+  somewhere in stdout can pass even if the player never actually arrived
+  there. Every subprocess-stdout test that needs to confirm *which room the
+  player is in* asserts on the literal `"Location: <name>"` line (the one
+  line `Area#describe` emits for the room the player currently occupies),
+  never a bare substring match on the area's name.
 
 ---
 
@@ -106,18 +154,16 @@ back to the requester.
   `class_movable_object.rb` becomes `mobile_object.rb`" (the literal
   example given).
 
-### TC-1502-006 — old flat files are gone, not duplicated
+### TC-1502-006 — old flat files are deleted (RULING #8, no longer an assumption)
 - **Covers:** #20 gem layout
 - **Type:** automated minitest
 - **Setup:** none
 - **Input:** `Dir.glob('class_*.rb')` and `Dir.glob('dmud.rb')` at repo
   root
-- **Expected:** empty (no old-style flat `.rb` files remain at the repo
-  root alongside the new `lib/` tree — otherwise there'd be two competing
-  copies of each class). Derivation: reasonable reading of "moves to
-  `lib/dmud/*.rb`" as a move, not a copy; flagged as **ASSUMPTION** (AC
-  doesn't explicitly say "delete the old files," just describes the target
-  shape) in the report.
+- **Expected:** empty — the old-style flat `.rb` files at the repo root
+  are gone, not duplicated alongside the new `lib/` tree. Derivation:
+  **RULING #8** ("The old flat files are deleted"), pinned explicitly in
+  the step-4 review, replacing the step-3 draft's assumption.
 
 ### TC-1502-007 — `mobile_object.rb` defines `MobileObject`, not `MovableObject`
 - **Covers:** #9, AC "The `MobileObject` class name is kept."
@@ -160,27 +206,27 @@ back to the requester.
   `require 'dmud'` (gem-style require, **not** `require_relative`).
   Derivation: AC line verbatim.
 
-### TC-1502-012 — no stray world-builder script left at repo root
+### TC-1502-012 — no stray world-builder script left at repo root (RULING #8)
 - **Covers:** #20 gem layout
 - **Type:** automated minitest
 - **Setup:** none
 - **Input:** `File.exist?('test_game.rb')`
-- **Expected:** false. Derivation: same reasoning/ASSUMPTION as
-  TC-1502-006 — the AC says the example "moves," which I read as "moves,"
-  not "is copied and the original kept too."
+- **Expected:** false. Derivation: **RULING #8**, same as TC-1502-006 —
+  the example "moves" to `examples/`, it is not copied and left behind.
 
 ### TC-1502-013 — the example world runs locally via `-Ilib` without installing the gem
 - **Covers:** #20 (dev-loop sanity, not explicitly required by AC but a
   natural precondition for every other example-world test in this doc)
-- **Type:** automated minitest (subprocess)
+- **Type:** automated minitest (subprocess, ~30s timeout — see Conventions)
 - **Setup:** spawn `ruby -Ilib examples/<file>.rb` from the repo root with
   canned stdin (`"move foyer\n"` then EOF)
 - **Input:** n/a
-- **Expected:** process starts, prints a room description, exits 0 on EOF
-  (full EOF-handling assertions are in section G; this test only confirms
-  the example *loads and runs* under `-Ilib`). Derivation: implied by
-  "example world ... uses require 'dmud'" needing a working load path in
-  dev before the gem is installed.
+- **Expected:** process starts, prints a `"Location: Foyer"` line, exits 0
+  on EOF (full EOF-handling assertions are in section G; this test only
+  confirms the example *loads and runs* under `-Ilib`). Derivation:
+  implied by "example world ... uses require 'dmud'" needing a working
+  load path in dev before the gem is installed; the `"Location:"`-line
+  assertion follows the bare-area-name ban in Conventions (defect A).
 
 ### TC-1502-014 — `Item`/`NPC`/`MOB` are reachable via `require 'dmud'`
 - **Covers:** #20 gem layout completeness
@@ -399,7 +445,7 @@ All tests in this section use the Test Fixture World convention above.
   its own `initialize` declares the matching 3 params)
 - **Type:** automated minitest
 - **Setup:** an `Area`
-- **Input:** `Player.new("Leeroy", area)`
+- **Input:** `Player.new("Leeroy Jenkins", area)`
 - **Expected:** succeeds; `@carryable == false`. Derivation:
   ARCHITECTURE.md Player section — this path was never broken, #1 doesn't
   touch it; test exists to catch an accidental regression from refactoring
@@ -410,23 +456,19 @@ All tests in this section use the Test Fixture World convention above.
 ## E. Command seam — adversarial input matrix (#2, #4)
 
 All tests in this section: Test Fixture World, player standing in **Foyer**
-unless noted. Each stubs the line-reading call to return the given *Input*
-once, then calls `player.query` (or `player.command` directly where the
-case is purely about dispatch, not line-reading), and captures everything
-`Player#message` would have sent plus, where noted, `$DEBUG`-gated stdout.
+unless noted. Each stubs `Reline.readline` (per RULING #10) to return the
+given *Input* once, then calls `player.query` (or `player.command`
+directly where the case is purely about dispatch, not line-reading), and
+captures everything `Player#message` would have sent plus, where noted,
+`$DEBUG`-gated stdout.
 
-**ASSUMPTION** used throughout this section (see report): leading/trailing
-whitespace on the raw input line is trimmed before matching. The AC says
-commands "match on word boundaries" but doesn't explicitly say input is
-trimmed; I picked trimming as the only behavior that makes "leading/trailing
-spaces" a meaningful, non-degenerate test case, and flagged it for
-confirmation.
+**RULING #1 (pinned, replaces the step-3 ASSUMPTION):** input is stripped
+of leading/trailing whitespace before matching.
 
-**ASSUMPTION** used throughout: the command *keyword* itself stays
-case-sensitive (lowercase only) — the AC's #4 fix is specifically about
-word-boundary matching, not case-folding, and nothing in #21 mentions
-case-insensitive commands. Area *names* were already case-insensitive via
-`gate_lookup` (Unchanged, TC-1502-023) and stay that way.
+**RULING #2 (pinned, replaces the step-3 ASSUMPTION):** command keywords
+are **case-insensitive** — `"MOVE Foyer"` moves the player. Area names
+were already case-insensitive via `gate_lookup` (unchanged) and stay that
+way; the two are independent code paths, tested independently below.
 
 ### TC-1502-037 — empty line → Invalid Command
 - **Covers:** #2
@@ -439,37 +481,44 @@ case-insensitive commands. Area *names* were already case-insensitive via
   patterns.
 
 ### TC-1502-038 — whitespace-only line → Invalid Command
-- **Covers:** #2 (+ trimming ASSUMPTION)
+- **Covers:** #2 + RULING #1
 - **Type:** automated minitest
 - **Input:** `"   "`
-- **Expected:** same as TC-1502-037 — trims to empty, same result.
-  Derivation: AC line above + trimming ASSUMPTION.
+- **Expected:** same as TC-1502-037 — strips to an empty string per
+  RULING #1, same result. Derivation: AC line above + RULING #1 (pinned).
 
 ### TC-1502-039 — leading/trailing spaces around a valid command still match
-- **Covers:** #2/#4 (+ trimming ASSUMPTION)
+- **Covers:** #2/#4 + RULING #1; **vehicle changed per defect B** — see
+  TC-1502-050 for why `"move foyer"` specifically is reserved for a
+  different, more interesting test
 - **Type:** automated minitest
-- **Input:** `"  move foyer  "`
-- **Expected:** behaves identically to `"move foyer"` (TC-1502-049) — moves
-  to Foyer (already there; see that test's expected room-stays-same note).
-  Derivation: trimming ASSUMPTION; without it this test would instead
-  assert Invalid Command, which is explicitly called out as the fallback
-  interpretation in the report.
+- **Input:** `"  move grand hall  "`
+- **Expected:** resolves identically to the unpadded `"move grand hall"`
+  (TC-1502-051) — moves the player into Grand Hall. Derivation: RULING #1
+  (input is stripped before matching), applied to a two-area move that has
+  no other quirks entangled with it (unlike moving to "foyer" while
+  already in the Foyer — see defect B / TC-1502-050).
 
-### TC-1502-040 — mixed-case command keyword does NOT match (case-sensitivity ASSUMPTION)
-- **Covers:** #4 (+ case ASSUMPTION)
+### TC-1502-040 — command keyword is case-insensitive: `"MOVE Foyer"` succeeds (RULING #2)
+- **Covers:** #4 + RULING #2 (**replaces the step-3 draft's "Invalid
+  Command" expectation, which assumed case-sensitivity**)
 - **Type:** automated minitest
+- **Setup:** player standing in **Grand Hall** (not Foyer, to keep this
+  test isolated from the #13 interaction reserved for TC-1502-050)
 - **Input:** `"MOVE Foyer"`
-- **Expected:** `"Invalid Command"` — the keyword `MOVE` doesn't match a
-  lowercase-only pattern. Derivation: case-sensitivity ASSUMPTION (see
-  section preamble); flagged in the report as the AC not addressing this.
+- **Expected:** the player moves into Foyer. Derivation: RULING #2 verbatim
+  ("Command keywords are CASE-INSENSITIVE (MOVE Foyer moves you)").
 
-### TC-1502-041 — mixed-case **area name** still resolves (unchanged case-insensitivity)
-- **Covers:** Unchanged (distinguishes command-keyword case from
-  area-name case, resolving the ambiguity in TC-1502-040 cleanly)
+### TC-1502-041 — mixed-case **area name** resolves with a lowercase keyword (isolates the pre-existing, unchanged `gate_lookup` case-insensitivity from RULING #2's new keyword case-insensitivity)
+- **Covers:** Unchanged (`gate_lookup`) — kept as a separate test from
+  TC-1502-040 so a correct implementation can't accidentally pass one
+  check while failing the other (e.g. an implementation that downcases
+  the *entire* input line, versus one that case-folds only the matched
+  keyword and relies on `gate_lookup`'s own independent `.downcase` for
+  the area name)
 - **Type:** automated minitest
-- **Input:** `"move FOYER"` (lowercase keyword, uppercase area name) — use
-  an adjacent area as the destination to make the move observable, e.g.
-  `"move GRAND HALL"` from Foyer
+- **Setup:** player standing in Foyer
+- **Input:** `"move GRAND HALL"` (lowercase keyword, uppercase area name)
 - **Expected:** moves to Grand Hall. Derivation: TC-1502-023 (unchanged
   `gate_lookup` case-insensitivity on the *area name* specifically).
 
@@ -543,15 +592,41 @@ case-insensitive commands. Area *names* were already case-insensitive via
   vs. ...)") inverted — post-fix it must match — combined with #15 being
   out of scope for dispatch behavior.
 
-### TC-1502-050 — `"move foyer"` from Foyer (self-loop target, happy path)
-- **Covers:** #4 regression / general move happy path
+### TC-1502-050 — `"move foyer"` while already standing in the Foyer resolves through the entrance gate (defect B fix: pinned exact outcome, confirms #13 unchanged via a new adversarial angle)
+- **Covers:** #4 (happy-path matching vehicle) + confirms #13 (out of
+  scope, unchanged) — a different angle on the same quirk than
+  TC-1502-115
 - **Type:** automated minitest
+- **Setup:** Test Fixture World, player standing in Foyer. Before issuing
+  the command, capture `entrance_gate = foyer.gate_lookup("Foyer")`
+  directly (not via the command) and read `entrance_gate.metadata[:name]`
+  — per the gate-naming convention above, the test never hard-codes this
+  string.
 - **Input:** `"move foyer"`
-- **Expected:** finds the gate (case-insensitive lookup still applies to
-  its own current area's name too — `gate_lookup` doesn't special-case
-  "already here"), traversal proceeds normally. Derivation: unchanged
-  `gate_lookup`/`move` mechanics; used here purely as a vehicle for the
-  leading/trailing-space test above.
+- **Expected:**
+  1. `player.location` is the same Foyer `Area` object as before the
+     command (the visible destination is unchanged, as a true no-op
+     would look).
+  2. The traversal's step-through line is exactly
+     `"You step through the #{entrance_gate.metadata[:name]}."` —
+     i.e. the gate that actually fires is the world's entrance gate, not
+     a dedicated Foyer-to-Foyer loop gate (there isn't one in this
+     world), because Foyer's own `@gates` list has the entrance gate
+     first, and that gate's own `@areas` list happens to include an
+     entry literally named "Foyer" (the Foyer itself was added to the
+     entrance gate's area list when `foyer.add_gate(game_entrance_gate)`
+     ran).
+  - Derivation: **Derived from source order** — the example-world script
+    attaches the entrance gate to Foyer *before* the Grand-Hall/Stairs/
+    Secret-Room gates (read directly from the script's call order, not
+    executed), combined with the unchanged `Gate#enter`/`Area#gate_lookup`
+    logic documented in `docs/ARCHITECTURE.md`'s "The game-entrance gate"
+    section: `Gate#enter`'s `@game_entrance` workaround forces the
+    object's source to `@areas[0][:object]` (the Lobby, linked first)
+    before resolving a 2-area destination, which lands back on the only
+    other area — Foyer. #13 is out of scope, so this mechanism is
+    confirmed unchanged, just exercised from a different starting
+    command than TC-1502-115's `"move game lobby"`.
 
 ### TC-1502-051 — multi-word area name: `"move Grand Hall"`
 - **Covers:** required coverage "multi-word area names"
@@ -621,7 +696,11 @@ case-insensitive commands. Area *names* were already case-insensitive via
 - **Expected:** debug output contains exactly one `MATCH` line (for
   `:move`) and **zero** `No match` lines (because the loop stops before
   reaching `:say`/`:look`/`:inventory`). Derivation: AC line verbatim +
-  unchanged hash-insertion order (`:move` is defined first).
+  unchanged hash-insertion order (`:move` is defined first). Note: this
+  traversal itself goes through the #13 entrance-gate path exactly as
+  TC-1502-050 describes — this test only inspects the `MATCH`/`No match`
+  debug lines from the *matching* stage, not the traversal's destination,
+  so that interaction doesn't affect its assertions.
 
 ### TC-1502-058 — stops-at-first-match across a later entry
 - **Covers:** #2 AC, same line, proving the "stop" isn't a no-op for
@@ -721,114 +800,124 @@ case-insensitive commands. Area *names* were already case-insensitive via
 
 ## G. Exit handling — EOF and Ctrl-C, with/without `$DEBUG` (#5 + its scope-extension comment)
 
-All four tests below are real subprocess (E2E) tests: spawn `ruby [-d]
--Ilib examples/<file>.rb`, feed it one valid command first (`"move
-foyer\n"`) to reach a stable mid-game state, then trigger the exit
-condition, and inspect the child's stdout/stderr and exit status after it
-terminates.
+All tests below are real subprocess (E2E) tests: spawn `ruby [-d]
+-Ilib examples/<file>.rb` (~30s timeout — see Conventions), feed it one
+valid command first (`"move foyer\n"`) to reach a stable mid-game state,
+then trigger the exit condition, and inspect the child's stdout/stderr and
+exit status after it terminates.
 
-**ASSUMPTION (flagged in the report as the single most ambiguous point in
-the AC):** the comment on #5 says both EOF and Ctrl-C "print a short
-goodbye and exit with status 0" and, under `$DEBUG`, both "print ... the
-exit reason, the exception and backtrace, and the session/player state."
-EOF is not a Ruby exception (`Readline.readline` just returns `nil`), so
-"the exception" for the EOF path must mean something synthesized for
-parity with the Ctrl-C path (a real `Interrupt`). The tests below only
-assert the *conceptual* presence of each of the four debug-dump pieces
-(reason / exception-or-equivalent / backtrace-like content / session+player
-state) without pinning an exact exception class name for the EOF case.
+**RULING #6 (pinned, replaces every step-3 `/goodbye/i` assertion):** the
+goodbye text is exactly `"Farewell, Leeroy Jenkins."` (player name per the
+Conventions section's player-name convention). Every test below that
+checks for a goodbye message now asserts this exact literal string, not a
+case-insensitive pattern match.
 
-### TC-1502-067 — EOF, `$DEBUG` off: exit 0 + goodbye, no stack trace
-- **Covers:** #5 + scope-extension comment
-- **Type:** automated minitest (subprocess)
+**RULING #3 (pinned, replaces the step-3 ASSUMPTION about "the exception"
+for EOF):**
+- **EOF:** the exit reason is the literal text `"EOF (end of input)"`,
+  followed by a backtrace from the call site (i.e. Ruby's `caller`, not an
+  exception's `.backtrace` — there is no exception object for EOF), then
+  session/player state.
+- **Ctrl-C:** prints the `Interrupt` exception (its class name/message),
+  its own `.backtrace`, and the same session/player state.
+- Both end with the pinned goodbye line, printed *after* the debug dump,
+  per the #5 comment's "the game ... prints its debug info first ... and
+  then exits cleanly."
+
+### TC-1502-067 — EOF, `$DEBUG` off: exit 0 + exact goodbye, no stack trace
+- **Covers:** #5 + scope-extension comment + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn without `-d`; send `"move foyer\n"`, then close stdin
   (EOF)
 - **Input:** n/a
-- **Expected:** process exit status `0`; stdout matches `/goodbye/i`
-  somewhere near the end; stdout+stderr contain no Ruby exception class
-  name, no `.rb:\d+:in`-style backtrace frames, no object UUIDs beyond
-  what normal (non-debug) play already prints. Derivation: comment on #5,
-  "print a short goodbye and exit with status 0"; "goodbye" is the literal
-  word used in the AC text.
+- **Expected:** process exit status `0`; stdout's final message line is
+  exactly `"Farewell, Leeroy Jenkins."`; stdout+stderr contain no Ruby
+  exception class name, no `.rb:\d+:in`-style backtrace frames, no object
+  UUIDs beyond what normal (non-debug) play already prints. Derivation:
+  comment on #5, "print a short goodbye and exit with status 0," plus
+  RULING #6's exact text.
 
-### TC-1502-068 — EOF, `$DEBUG` on: exit 0 + goodbye + debug dump
-- **Covers:** #5 + scope-extension comment
-- **Type:** automated minitest (subprocess)
+### TC-1502-068 — EOF, `$DEBUG` on: exit 0 + pinned debug dump + exact goodbye
+- **Covers:** #5 + scope-extension comment + RULING #3 + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn with `-d` (or equivalent `$DEBUG=1`); same input as
   TC-1502-067
 - **Input:** n/a
-- **Expected:** exit status `0`; output matches `/goodbye/i`; **and**
-  additionally contains: something identifying the exit reason as EOF
-  (e.g. mentions "EOF"); at least one backtrace-shaped line (matches
-  `/\.rb:\d+/`); and session/player identifying state (the example
-  world's player name and/or the default session name `"My Session"`).
-  Derivation: comment on #5, "the game first prints the exit reason, the
-  exception and backtrace, and the session/player state" — applied
-  literally to both exit paths per the comment's wording, per the
-  ASSUMPTION noted above.
+- **Expected:** exit status `0`; output contains, **in this order**: the
+  literal text `"EOF (end of input)"`; at least one backtrace-shaped line
+  (matches `/\.rb:\d+/`, sourced from `caller` per RULING #3 — no
+  exception object exists for this path); session/player identifying
+  state (the player's name `"Leeroy Jenkins"` and/or the default session
+  name `"My Session"`); and finally the exact line `"Farewell, Leeroy
+  Jenkins."` after all of the above. Derivation: RULING #3 (pinned
+  verbatim) + comment on #5 ("prints its debug info first ... and then
+  exits cleanly").
 
-### TC-1502-069 — Ctrl-C (SIGINT), `$DEBUG` off: exit 0 + goodbye, no stack trace
-- **Covers:** #5 scope-extension comment
-- **Type:** automated minitest (subprocess)
+### TC-1502-069 — Ctrl-C (SIGINT), `$DEBUG` off: exit 0 + exact goodbye, no stack trace
+- **Covers:** #5 scope-extension comment + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn without `-d`; send `"move foyer\n"`, then send
   `SIGINT` to the child process while it's blocked on the next prompt
 - **Input:** n/a
-- **Expected:** exit status `0`; stdout matches `/goodbye/i`; no
-  `Interrupt` exception name or backtrace visible anywhere in captured
-  output. Derivation: comment on #5, "Ctrl-C (Interrupt) at the prompt
-  should also exit cleanly instead of dumping a stack trace."
+- **Expected:** exit status `0`; stdout's final message line is exactly
+  `"Farewell, Leeroy Jenkins."`; no `Interrupt` exception name or
+  backtrace visible anywhere in captured output. Derivation: comment on
+  #5, "Ctrl-C (Interrupt) at the prompt should also exit cleanly instead
+  of dumping a stack trace," plus RULING #6.
 
-### TC-1502-070 — Ctrl-C (SIGINT), `$DEBUG` on: exit 0 + goodbye + debug dump
-- **Covers:** #5 scope-extension comment
-- **Type:** automated minitest (subprocess)
+### TC-1502-070 — Ctrl-C (SIGINT), `$DEBUG` on: exit 0 + pinned debug dump + exact goodbye
+- **Covers:** #5 scope-extension comment + RULING #3 + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn with `-d`; same trigger as TC-1502-069
 - **Input:** n/a
-- **Expected:** exit status `0`; `/goodbye/i`; plus exit-reason text
-  mentioning interruption/Ctrl-C, a real `Interrupt`-shaped backtrace
-  (this is the one case where "the exception" is unambiguous — it's a
-  genuine rescued `Interrupt`), and session/player state. Derivation:
-  comment on #5, literal wording, unambiguous half of the ASSUMPTION in
-  the section preamble.
+- **Expected:** exit status `0`; output contains, **in this order**: the
+  `Interrupt` exception's class name (i.e. the substring `"Interrupt"`);
+  a real exception backtrace (`/\.rb:\d+/`-shaped lines, this time sourced
+  from `Interrupt#backtrace` per RULING #3 — this is the unambiguous half,
+  a genuine rescued exception); session/player state; and finally
+  `"Farewell, Leeroy Jenkins."`. Derivation: RULING #3, literal wording.
 
 ### TC-1502-071 — EOF as the very first input (boundary: before any room is entered)
-- **Covers:** #5 boundary
-- **Type:** automated minitest (subprocess)
+- **Covers:** #5 boundary + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn without `-d`; close stdin immediately, no prior command
 - **Input:** n/a
-- **Expected:** exit status `0`, goodbye text, no crash — confirms the
-  fix doesn't depend on having played at least one turn first. Derivation:
-  comment on #5 doesn't scope the fix to "after the first command," so
-  the earliest possible EOF must behave the same.
+- **Expected:** exit status `0`, exact `"Farewell, Leeroy Jenkins."`, no
+  crash — confirms the fix doesn't depend on having played at least one
+  turn first. Derivation: comment on #5 doesn't scope the fix to "after
+  the first command," so the earliest possible EOF must behave the same;
+  RULING #6 for the exact text.
 
 ### TC-1502-072 — Ctrl-C as the very first input (boundary)
-- **Covers:** #5 boundary
-- **Type:** automated minitest (subprocess)
+- **Covers:** #5 boundary + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** spawn without `-d`; send `SIGINT` immediately, no prior
   command
 - **Input:** n/a
 - **Expected:** same as TC-1502-071, mirrored for Ctrl-C. Derivation: same
   reasoning.
 
-### TC-1502-073 — EOF vs Ctrl-C goodbye text consistency (edge: do they share a code path?)
-- **Covers:** #5 scope-extension comment (implementation hint: "Both EOF
-  and Ctrl-C print a short goodbye" suggests one shared message)
-- **Type:** automated minitest (subprocess)
+### TC-1502-073 — EOF and Ctrl-C produce the exact same goodbye string (no longer a soft assumption)
+- **Covers:** #5 scope-extension comment + RULING #6
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** two runs of TC-1502-067 and TC-1502-069's setups
 - **Input:** n/a
-- **Expected:** the goodbye text matched by `/goodbye/i` is the **same
-  literal string** in both cases. Derivation: AC phrasing groups both
-  paths under one sentence ("Both EOF and Ctrl-C ... print a short
-  goodbye") rather than describing two different messages; flagged as a
-  soft ASSUMPTION (a reasonable but not ironclad reading) in the report.
+- **Expected:** both runs' final message line is the identical literal
+  string `"Farewell, Leeroy Jenkins."` — this is now a hard, pinned
+  equality check, not a pattern-match comparison. Derivation: RULING #6
+  gives one fixed format string parameterized only by player name, and
+  both paths use the same fixture player name, so they must be byte-equal.
 
-### TC-1502-074 — `$DEBUG`-off exit paths produce no debug dump content (negative, paired against 068/070)
-- **Covers:** #5 + #21 AC "debug dump content only when $DEBUG"
-- **Type:** automated minitest (subprocess)
+### TC-1502-074 — `$DEBUG`-off exit paths produce none of the pinned debug-dump markers (negative, paired against 068/070)
+- **Covers:** #5 + #21 AC "debug dump content only when $DEBUG" + RULING #3
+- **Type:** automated minitest (subprocess, ~30s timeout)
 - **Setup:** reuse TC-1502-067 and TC-1502-069 output
 - **Input:** n/a
-- **Expected:** neither contains the exit-reason/backtrace/session-state
-  markers asserted present in TC-1502-068/070. Derivation: #21 AC line,
-  negative direction, stated explicitly in the required coverage list.
+- **Expected:** neither contains `"EOF (end of input)"`, the substring
+  `"Interrupt"`, any `/\.rb:\d+/`-shaped backtrace line, or the session/
+  player state markers asserted present in TC-1502-068/070. Derivation:
+  #21 AC line, negative direction, now checked against the exact pinned
+  markers from RULING #3 instead of loosely-described content.
 
 ### TC-1502-075 — EOF and Ctrl-C both leave no zombie/orphan process (operational boundary)
 - **Covers:** general process-hygiene sanity for the subprocess test
@@ -842,17 +931,18 @@ state) without pinning an exact exception class name for the EOF case.
   DMUD's behavior, and not worth automating into `rake test` assertions.
 
 ### TC-1502-076 — a second SIGINT during the goodbye/debug-dump window doesn't hang or double-exit
-- **Covers:** #5 edge case not explicitly covered by the AC
+- **Covers:** #5 edge case not explicitly covered by the AC or the step-4
+  rulings
 - **Type:** manual check
 - **Setup:** send `SIGINT` once, then immediately send it again before the
   process has fully exited
 - **Input:** n/a
 - **Expected:** process still exits with status `0` (or, acceptably, a
-  signal-death status if the second SIGINT interrupts cleanup — the AC
-  says nothing about this case). Derivation: none — this is flagged in the
-  report as an AC gap; marked manual/exploratory rather than given a
-  pinned automated expectation, since asserting a specific exit status here
-  would be inventing a requirement the AC never stated.
+  signal-death status if the second SIGINT interrupts cleanup — neither
+  the AC nor the step-4 rulings say anything about this case). Derivation:
+  none — still an open gap after step 4; kept manual/exploratory rather
+  than given a pinned automated expectation, since asserting a specific
+  exit status here would be inventing a requirement nobody has stated.
 
 ---
 
@@ -875,9 +965,10 @@ state) without pinning an exact exception class name for the EOF case.
   bytes (`\n`, 0x0A)
 - **Input:** n/a
 - **Expected:** the line containing `"Command>"` is exactly
-  `"<player name>: Command> "` (or equivalent single-line form) with
+  `"Leeroy Jenkins: Command> "` (per the player-name convention) with
   nothing else embedded in that same line. Derivation: #21 AC "the prompt
-  is a single line, with the blank line printed separately."
+  is a single line, with the blank line printed separately" + the
+  Conventions section's player-name convention.
 
 ### TC-1502-079 — the blank line before the prompt is a separate, real newline
 - **Covers:** #6
@@ -917,231 +1008,271 @@ state) without pinning an exact exception class name for the EOF case.
 
 ## I. Traversal output order (#7)
 
-Setup for this whole section: Test Fixture World, plus a dedicated
-`class TestGate < Gate` defined only inside the test file, overriding
-`gate_specific` to emit one identifiable marker (e.g. calling
-`@object.message("TOLL: a toll troll demands payment.")`), wired between
-two areas. Required by the task ("use a Gate subclass in the test").
+**RULING #7 (pinned, fully replaces the step-3 draft's partial ordering):**
+the complete, pinned traversal sequence is:
 
-### TC-1502-082 — clear-screen code appears before any traversal text ($DEBUG off)
+1. clear-screen/cursor-home codes (`\033[2J\033[H`)
+2. **[$DEBUG only]** the "You have entered the '...' Gate" line
+3. `gate_specific` output
+4. `"You step through the <gate name>."`
+5. **[$DEBUG only]** the "You have exited the '...' Gate" line
+6. the new area's description (`"Location: <name>"` and the rest of
+   `Area#describe`)
+
+Tests in this section use a dedicated `class TestGate < Gate` defined only
+inside the test file, overriding `gate_specific` to emit one identifiable
+marker (e.g. calling `@object.message("TOLL: a toll troll demands
+payment.")`), wired between two areas and given its own test-chosen name
+(e.g. `"Toll Gate"`) — never a name borrowed from the real example world
+(per the gate-naming convention in Conventions, defect C).
+
+### TC-1502-082 — full pinned ordering, `$DEBUG` off (4 elements)
 - **Covers:** #7
 - **Type:** automated minitest
-- **Setup:** $DEBUG off; trigger a traversal across the `TestGate`
+- **Setup:** $DEBUG off; traverse the `TestGate` (named `"Toll Gate"`)
 - **Input:** the move command that crosses it
-- **Expected:** the ANSI clear-screen/cursor-home sequence (`\033[2J\033[H`)
-  is the **first** thing emitted during the traversal, i.e. its index in
-  the captured output is lower than the index of every other traversal
-  string checked below. Derivation: #21 AC "the screen clears at the start
-  of the traversal."
+- **Expected:** the four $DEBUG-independent elements appear in this exact
+  relative order: clear-screen sequence, then `"TOLL: a toll troll demands
+  payment."`, then `"You step through the Toll Gate."`, then
+  `"Location: <destination area name>"`. Derivation: RULING #7, items 1,
+  3, 4, 6 (items 2 and 5 are absent since $DEBUG is off).
 
-### TC-1502-083 — `gate_specific` output appears after the clear
-- **Covers:** #7 + required coverage "gate_specific output after the clear"
+### TC-1502-083 — full pinned ordering, `$DEBUG` on (6 elements)
+- **Covers:** #7 — this is the direct, central test of RULING #7
 - **Type:** automated minitest
-- **Setup:** same traversal
+- **Setup:** $DEBUG on; same `TestGate` traversal
 - **Input:** n/a
-- **Expected:** `"TOLL: a toll troll demands payment."` appears at an
-  index greater than the clear-screen sequence's index. Derivation: #21 AC
-  "gate_specific output prints after the clear."
+- **Expected:** all six elements appear, strictly in RULING #7's order:
+  clear-screen sequence; `"You have entered the 'Toll Gate' Gate"`;
+  `"TOLL: a toll troll demands payment."`; `"You step through the Toll
+  Gate."`; `"You have exited the 'Toll Gate' Gate"`; `"Location: <destination
+  area name>"`. Derivation: RULING #7, all six items, in the pinned order.
 
-### TC-1502-084 — "You step through the <gate name>." appears after the clear and before the new area
+### TC-1502-084 — step-through line's literal content
 - **Covers:** #7
 - **Type:** automated minitest
-- **Setup:** same traversal, `TestGate` named e.g. `"Toll Gate"`
+- **Setup:** same `TestGate` traversal (any $DEBUG setting)
 - **Input:** n/a
-- **Expected:** the literal line `"You step through the Toll Gate."`
-  (gate name substituted exactly) appears after the clear-screen index and
-  before the destination area's `"Location: <name>"` line. Derivation:
-  #21 AC quoted verbatim: "the non-debug line 'You step through the
-  <gate name>.' prints"; "area after it."
+- **Expected:** the line is exactly `"You step through the Toll Gate."`
+  (gate name substituted exactly, matching the name the test itself gave
+  the `TestGate`). Derivation: #21 AC quoted verbatim: "the non-debug line
+  'You step through the <gate name>.' prints."
 
-### TC-1502-085 — destination area description appears after the step-through line
+### TC-1502-085 — entered/exited Gate lines: present with pinned wording under $DEBUG, absent without it
 - **Covers:** #7
 - **Type:** automated minitest
-- **Setup:** same traversal
+- **Setup:** two sub-cases: $DEBUG off and $DEBUG on, same `TestGate`
+  traversal
 - **Input:** n/a
-- **Expected:** `"Location: <destination area name>"` index is greater
-  than the step-through line's index. Derivation: #21 AC "area after it."
+- **Expected:** off → neither `"You have entered the 'Toll Gate' Gate"` nor
+  `"You have exited the 'Toll Gate' Gate"` appears anywhere in output; on →
+  both appear, with exactly that wording (unchanged from today's literal
+  strings — only their $DEBUG guard and position are new) and in the
+  relative positions pinned by RULING #7 (entered before `gate_specific`,
+  exited after the step-through line). Derivation: #21 AC "entered/exited
+  lines only under $DEBUG" + RULING #7's exact slot numbers 2 and 5.
 
-### TC-1502-086 — entered/exited Gate lines absent with $DEBUG off
-- **Covers:** #7
-- **Type:** automated minitest
-- **Setup:** $DEBUG off, same traversal
-- **Input:** n/a
-- **Expected:** no `"You have entered the '...' Gate"` / `"You have
-  exited the '...' Gate"` text anywhere in the captured output.
-  Derivation: #21 AC "entered/exited lines only under $DEBUG."
-
-### TC-1502-087 — entered/exited Gate lines present with $DEBUG on, somewhere between clear and area (relative order to step-through/gate_specific left unpinned — ASSUMPTION)
-- **Covers:** #7
-- **Type:** automated minitest
-- **Setup:** $DEBUG on, same traversal
-- **Input:** n/a
-- **Expected:** both the entered and exited lines are present, each with
-  an index greater than the clear-screen index and less than the
-  destination-area index. The test does **not** assert their order
-  relative to the step-through line or the `gate_specific` output — the
-  AC pins only "clear ... before," "area ... after," and "only under
-  $DEBUG," not their position relative to each other. Derivation: #21 AC,
-  literally what it does and doesn't say; flagged as an ambiguity in the
-  report.
-
-### TC-1502-088 — a one-area (loop) gate traversal doesn't break the new ordering
+### TC-1502-086 — a one-area (loop) gate traversal: pinned order holds; the pre-existing loop message is an explicitly open gap
 - **Covers:** #7 edge case, combined with the pre-existing one-area-gate
   behavior described in ARCHITECTURE.md
 - **Type:** automated minitest
-- **Setup:** a second `TestGate` with only one `Area` linked (the loop
-  case); $DEBUG off
+- **Setup:** a second `TestGate` (named e.g. `"Spinning Door"`) with only
+  one `Area` linked (the loop case); $DEBUG off
 - **Input:** the move command that traverses it
-- **Expected:** no crash; clear-screen still appears before the
-  step-through line, which still appears before the (same) area's
-  re-description. The test does **not** assert whether the existing
-  "This Gate seems to only return to the Area you're leaving..." response
-  text still prints, and if so, where — the AC's reordering description
-  doesn't mention this pre-existing one-area-specific message at all.
-  Derivation: ARCHITECTURE.md's documented one-area case + #21 AC's silence
-  on it, flagged as an ambiguity in the report.
+- **Expected:** no crash; clear-screen still precedes
+  `"You step through the Spinning Door."`, which still precedes the
+  (same) area's re-description. The test does **not** assert whether the
+  existing "This Gate seems to only return to the Area you're leaving..."
+  response text still prints, and if so, where — **step 4's rulings did
+  not address this pre-existing one-area-specific message**, so it
+  remains an open gap, called out again in the report rather than
+  silently guessed at. Derivation: ARCHITECTURE.md's documented one-area
+  case + RULING #7 (silent on this specific message).
 
-### TC-1502-089 — traversal order holds for the Secret Room's hidden-side gate too (regression across adversarial-input and traversal-order coverage)
-- **Covers:** #7 + required coverage overlap (hidden area)
+### TC-1502-087 — the Secret Room's hidden-side gate: pinned order holds on a real fixture gate, not just `TestGate`
+- **Covers:** #7 + required coverage overlap (hidden area) + gate-naming
+  convention (defect C)
 - **Type:** automated minitest
-- **Setup:** $DEBUG off; traverse from Foyer into Secret Room (the gate
-  with a hidden side, not a `TestGate` — confirms the ordering fix isn't
-  specific to the subclass-with-`gate_specific` case)
+- **Setup:** $DEBUG off; traverse from Foyer into Secret Room (the real
+  fixture gate with a hidden side, not a `TestGate` — confirms the
+  ordering fix isn't specific to the subclass-with-`gate_specific` case).
+  Capture `gate = foyer.gate_lookup("Secret Room")` and read
+  `gate.metadata[:name]` before issuing the command, per the gate-naming
+  convention — never hard-code this gate's name.
 - **Input:** `"move secret room"`
 - **Expected:** same clear-before-step-through-before-area ordering holds,
-  with no `gate_specific` text (base `Gate#gate_specific` is still a
-  no-op). Derivation: #21 AC applies to traversal generally, not just
-  gates with custom `gate_specific` hooks.
+  with the step-through line reading
+  `"You step through the #{gate.metadata[:name]}."` and no custom
+  `gate_specific` text (base `Gate#gate_specific` is still a no-op).
+  Derivation: RULING #7 applies to traversal generally, not just gates
+  with custom `gate_specific` hooks; gate name read dynamically per the
+  Conventions section.
+
+### TC-1502-088 — ordinary two-sided gate (Foyer↔Grand Hall), `gate_specific` is the default no-op: pinned order still holds
+- **Covers:** #7 — confirms the ordering fix applies to the everyday case,
+  not only to a gate with a custom `gate_specific` override
+- **Type:** automated minitest
+- **Setup:** $DEBUG off; traverse the real Foyer↔Grand Hall fixture gate;
+  capture its name the same way as TC-1502-087
+- **Input:** `"move grand hall"`
+- **Expected:** clear-screen precedes the step-through line, which
+  precedes `"Location: Grand Hall"`; no `gate_specific` text appears
+  anywhere (nothing to assert there, since the default hook is a no-op).
+  Derivation: RULING #7, same ordering, applied to the base (non-subclass)
+  `Gate#gate_specific`.
+
+### TC-1502-089 — $DEBUG traversal lines for a real fixture gate include its connection info (cross-reference to Section J)
+- **Covers:** #21 AC "the $DEBUG traversal lines include them" (Gate's
+  `to_s`/`inspect`/`connection_label`)
+- **Type:** automated minitest
+- **Setup:** $DEBUG on; traverse the real Foyer↔Grand Hall fixture gate
+- **Input:** n/a
+- **Expected:** the entered/exited $DEBUG lines from TC-1502-085 contain
+  the gate's pinned `connection_label` value (see TC-1502-090,
+  `"Foyer <> Grand Hall"`) rather than just the bare gate name. Derivation:
+  AC line verbatim, now checkable against RULING #4's exact format.
 
 ---
 
 ## J. `Gate#connection_label` / `#to_s` / `#inspect`
 
-### TC-1502-090 — `connection_label` for a plain two-sided visible gate (happy path, literal AC example)
-- **Covers:** #21 AC "derived from the per-side area/visibility pairs ...
-  e.g. 'Foyer <> Grand Hall'"
-- **Type:** automated minitest
-- **Setup:** Test Fixture World's Foyer↔Grand Hall gate (both sides
-  visible, added in that order)
-- **Input:** `gate.connection_label`
-- **Expected:** exactly `"Foyer <> Grand Hall"`. Derivation: AC's literal
-  example string — the one case in this section that is **not** ambiguous.
+**RULING #4 (pinned, replaces the step-3 ASSUMPTIONs about hidden-side
+marking and the 1-area/0-area formats):**
+- two visible sides: `"Foyer <> Grand Hall"`
+- a hidden side gets the suffix `" (hidden)"`, e.g.
+  `"Foyer <> Secret Room (hidden)"`
+- a 1-area gate: `"Foyer (loop)"`
+- a 0-area gate: `"(no areas)"`
+- area order follows `@areas` order (the order they were added, not
+  alphabetical or any other sort)
 
-### TC-1502-091 — `connection_label` marks a hidden side (format unspecified — ASSUMPTION)
-- **Covers:** #21 AC "with hidden sides marked"
-- **Type:** automated minitest
-- **Setup:** Test Fixture World's Foyer↔Secret Room gate (Secret Room's
-  side added with `visible: false`)
-- **Input:** `gate.connection_label`
-- **Expected:** contains both `"Foyer"` and `"Secret Room"`, and is
-  **not** literally equal to the unmarked form `"Foyer <> Secret Room"`
-  (i.e. some marker is present distinguishing the hidden side) — the exact
-  marker text/punctuation is deliberately left unasserted. Derivation: AC
-  says "hidden sides marked" but gives no example of the marking; flagged
-  as an ambiguity in the report.
+**RULING #5 (pinned, replaces the step-3 ASSUMPTION that `to_s`/`inspect`
+could be identical):**
+- `Gate#to_s` is `"<name> [<connection_label>]"`
+- `Gate#inspect` is `"#<Gate id=<uuid> name=<name> connections=<connection_label>>"`
+- these are two different, fully pinned formats.
 
-### TC-1502-092 — `connection_label` for a one-area gate (format unspecified — ASSUMPTION)
-- **Covers:** required coverage "1-area gate"
-- **Type:** automated minitest
-- **Setup:** a `Gate` with exactly one `Area` added
-- **Input:** `gate.connection_label`
-- **Expected:** does not raise; contains the single area's name; does not
-  contain the `" <> "` separator twice or an obviously-duplicated area
-  name. Derivation: no literal example given for this case in the AC;
-  flagged as an ambiguity, test kept deliberately loose.
+All tests in this section build their own gate(s) in-test (per the
+gate-naming convention in Conventions) rather than assuming a specific
+name for a real example-world gate.
 
-### TC-1502-093 — `connection_label` for a zero-area gate (boundary, not explicitly required but cheap)
-- **Covers:** boundary extrapolation beyond the required coverage list
+### TC-1502-090 — `connection_label` for a plain two-sided visible gate
+- **Covers:** RULING #4, first bullet (also the one case the original AC
+  gave a literal example for)
 - **Type:** automated minitest
-- **Setup:** `Gate.new` with no `add_area` calls yet
+- **Setup:** `gate = Gate.new("Test Gate")`; `foyer_like = Area.new(name: "Foyer")`;
+  `other = Area.new(name: "Grand Hall")`; `foyer_like.add_gate(gate)`;
+  `other.add_gate(gate)` (both sides visible, added in that order)
 - **Input:** `gate.connection_label`
-- **Expected:** does not raise (only assertion made — no specific string
-  pinned). Derivation: none in the AC; included purely as a
-  crash-safety boundary check, explicitly lower-confidence than the rest
-  of this section.
+- **Expected:** exactly `"Foyer <> Grand Hall"`. Derivation: RULING #4,
+  first bullet, verbatim.
+
+### TC-1502-091 — `connection_label` marks a hidden side with `" (hidden)"`
+- **Covers:** RULING #4, second bullet
+- **Type:** automated minitest
+- **Setup:** `gate = Gate.new("Test Gate")`; `foyer_like = Area.new(name: "Foyer")`;
+  `secret = Area.new(name: "Secret Room")`; `foyer_like.add_gate(gate)`
+  (visible, default); `secret.add_gate(gate, false)` (hidden side, added
+  second)
+- **Input:** `gate.connection_label`
+- **Expected:** exactly `"Foyer <> Secret Room (hidden)"`. Derivation:
+  RULING #4, second bullet, verbatim, with area order matching
+  `@areas` insertion order (Foyer added first, so it comes first in the
+  label; the *second*, hidden, area gets the suffix).
+
+### TC-1502-092 — `connection_label` for a one-area (loop) gate
+- **Covers:** RULING #4, third bullet
+- **Type:** automated minitest
+- **Setup:** `gate = Gate.new("Test Gate")`; `foyer_like = Area.new(name: "Foyer")`;
+  `foyer_like.add_gate(gate)` (only one area ever added)
+- **Input:** `gate.connection_label`
+- **Expected:** exactly `"Foyer (loop)"`. Derivation: RULING #4, third
+  bullet, verbatim.
+
+### TC-1502-093 — `connection_label` for a zero-area gate
+- **Covers:** RULING #4, fourth bullet
+- **Type:** automated minitest
+- **Setup:** `Gate.new("Test Gate")` with no `add_area`/`add_gate` calls
+  at all
+- **Input:** `gate.connection_label`
+- **Expected:** exactly `"(no areas)"`. Derivation: RULING #4, fourth
+  bullet, verbatim.
 
 ### TC-1502-094 — `connection_label` updates when a second area is added later (proves derived, not stored)
 - **Covers:** required coverage "a label that updates when an area is
-  added later (proves derived, not stored)"
+  added later (proves derived, not stored)" + RULING #4 (now checkable
+  with exact pinned strings on both sides of the change)
 - **Type:** automated minitest
 - **Setup:** `gate = Gate.new("Test Gate")`; `area_a = Area.new(name: "A")`;
   `area_a.add_gate(gate)`
 - **Input:** capture `label1 = gate.connection_label`; then
   `area_b = Area.new(name: "B")`; `area_b.add_gate(gate)`; capture
   `label2 = gate.connection_label`
-- **Expected:** `label1 != label2`; `label2` contains both `"A"` and
-  `"B"`; `label1` does not contain `"B"` (it didn't exist yet).
-  Derivation: required-coverage line verbatim — this test needs no format
-  ASSUMPTION since it only compares the label to itself before/after, not
-  to a hard-coded string.
+- **Expected:** `label1` is exactly `"A (loop)"` (RULING #4, third
+  bullet); `label2` is exactly `"A <> B"` (RULING #4, first bullet,
+  applied to these area names). Derivation: required-coverage line +
+  RULING #4, both sides of the comparison now pinned exactly rather than
+  just asserted-different.
 
-### TC-1502-095 — `Gate#to_s` includes name, an area name, and the id
-- **Covers:** #21 AC "`Gate#to_s`/`#inspect` show the name, connections
-  and id"
+### TC-1502-095 — `Gate#to_s` format
+- **Covers:** RULING #5, first bullet
 - **Type:** automated minitest
-- **Setup:** Test Fixture World's Foyer↔Grand Hall gate, named e.g.
-  `"Foyer<>Grand Hall Gate"` (matches existing `test_game.rb` naming
-  convention)
+- **Setup:** same gate as TC-1502-090 (`"Test Gate"` linking `"Foyer"`
+  and `"Grand Hall"`)
 - **Input:** `gate.to_s`
-- **Expected:** the string contains the gate's own `@metadata[:name]`,
-  the gate's `id`, and at least one connected area's name (or the whole
-  `connection_label`). Exact layout/punctuation is not pinned. Derivation:
-  AC line verbatim; format is unspecified beyond "show," flagged as a
-  minor ambiguity.
+- **Expected:** exactly `"Test Gate [Foyer <> Grand Hall]"`. Derivation:
+  RULING #5, first bullet, verbatim, composed with TC-1502-090's pinned
+  `connection_label`.
 
-### TC-1502-096 — `Gate#inspect` includes the same three pieces of information
-- **Covers:** #21 AC, same line, applied to `#inspect`
+### TC-1502-096 — `Gate#inspect` format
+- **Covers:** RULING #5, second bullet
 - **Type:** automated minitest
 - **Setup:** same gate
 - **Input:** `gate.inspect`
-- **Expected:** same three substrings present (name, id, a connection
-  reference). Derivation: same AC line; **ASSUMPTION**: the AC groups
-  `to_s`/`inspect` together without requiring them to differ from each
-  other (unlike Ruby's usual `to_s`/`inspect` convention of `inspect`
-  being more verbose) — the test does not assert they differ, only that
-  each individually contains the required content.
+- **Expected:** exactly `"#<Gate id=#{gate.id} name=Test Gate connections=Foyer <> Grand Hall>"`.
+  Derivation: RULING #5, second bullet, verbatim, composed with the
+  gate's real `id` and TC-1502-090's pinned `connection_label`.
 
-### TC-1502-097 — $DEBUG traversal lines include the gate's connection info
+### TC-1502-097 — `$DEBUG` traversal lines include the gate's connection info (cross-referenced from TC-1502-089)
 - **Covers:** #21 AC "the $DEBUG traversal lines include them"
 - **Type:** automated minitest
-- **Setup:** $DEBUG on; traverse the Foyer↔Grand Hall gate
+- **Setup:** see TC-1502-089
 - **Input:** n/a
-- **Expected:** the entered/exited $DEBUG lines (TC-1502-087) contain
-  either the gate's `to_s`/`inspect` output or at minimum the
-  `connection_label` substring, rather than just the bare gate name as
-  today. Derivation: AC line verbatim.
+- **Expected:** see TC-1502-089 — listed here for completeness of this
+  section's AC-line coverage, not as a duplicate test.
 
 ### TC-1502-098 — `connection_label`/`to_s`/`inspect` are read-only derivations (no setter side effects)
-- **Covers:** #21 AC "derived ... not stored" (same spirit as TC-1502-094,
-  checked from the opposite direction)
+- **Covers:** RULING #4/#5 "derived" framing, same spirit as TC-1502-094,
+  checked from the opposite direction
 - **Type:** automated minitest
-- **Setup:** same gate as TC-1502-094
+- **Setup:** same gate as TC-1502-090
 - **Input:** call `gate.connection_label` twice in a row with no state
   change in between
-- **Expected:** both calls return equal values (idempotent, pure
-  function of current `@areas` — not e.g. appending to some memoized
-  array each call). Derivation: "derived, not stored" implies
-  recomputation, not incremental mutation; a cheap idempotency check.
+- **Expected:** both calls return the exact same pinned string
+  `"Foyer <> Grand Hall"` (idempotent, a pure function of current
+  `@areas` — not e.g. appending to some memoized array each call).
+  Derivation: "derived, not stored" implies recomputation, not
+  incremental mutation, now checked against RULING #4's exact string
+  rather than a loose equality check.
 
 ---
 
 ## K. Style (#9)
 
-### TC-1502-099 — no leading-space indentation anywhere under `lib/` (tabs-only)
+**RULING #9 (pinned, extends scope beyond the step-3 draft's `lib/`-only
+check):** tabs only, under `lib/`, `examples/`, **and** `test/`.
+
+### TC-1502-099 — no leading-space indentation anywhere under `lib/`, `examples/`, or `test/` (tabs-only)
 - **Covers:** #9 + required coverage "no mixed tab/space indentation in
-  lib/ (a test or check that scans files)"
+  lib/ (a test or check that scans files)" + RULING #9's expanded scope
 - **Type:** automated minitest (static scan)
-- **Setup:** read every `.rb` file under `lib/`
+- **Setup:** read every `.rb` file under `lib/`, `examples/`, and
+  `test/`
 - **Input:** every line's leading-whitespace run
 - **Expected:** every leading-whitespace run matches `/\A\t*\z/` (tabs
   only, never a space character anywhere in the indentation, and never a
-  mix). Derivation: #21 AC "Style (#9): tabs ... fixed" — I read "tabs" as
-  the chosen/retained single style (the codebase was predominantly tabs
-  already; #9 only flags *mixed* tabs/spaces, not tabs itself, as the
-  defect), stated here as the stricter of the two readings the required
-  coverage item allows ("no mixed" vs. "tabs-only"); flagged as a minor
-  ASSUMPTION in the report in case the implementer instead picks
-  spaces-only.
+  mix), in all three directories. Derivation: RULING #9, verbatim,
+  replacing the step-3 draft's `lib/`-only ASSUMPTION.
 
 ### TC-1502-100 — `.editorconfig` exists at the repo root
 - **Covers:** #21 AC "an `.editorconfig`" + required coverage
@@ -1151,13 +1282,14 @@ two areas. Required by the task ("use a Gate subclass in the test").
 - **Expected:** true. Derivation: AC line verbatim.
 
 ### TC-1502-101 — `.editorconfig` declares `indent_style = tab` for Ruby files
-- **Covers:** #9 + TC-1502-099's chosen style, kept consistent
+- **Covers:** #9 + RULING #9
 - **Type:** automated minitest (content check)
 - **Setup:** read `.editorconfig`
 - **Input:** n/a
 - **Expected:** a section applicable to `*.rb` (or `[*]`) sets
-  `indent_style = tab`. Derivation: consistency with TC-1502-099's
-  reading of "tabs" as the chosen style; same ASSUMPTION caveat applies.
+  `indent_style = tab`. Derivation: RULING #9 pins "tabs only" as the
+  chosen style across `lib/`, `examples/`, and `test/`; this test
+  confirms the editor-level config agrees, not just the files themselves.
 
 ### TC-1502-102 — typo fixes: `"GameOjbects"` is gone
 - **Covers:** #9
@@ -1227,8 +1359,8 @@ two areas. Required by the task ("use a Gate subclass in the test").
 - **Expected:** exit status `0`; the gem's files appear under
   `<tmp>/gems/dmud-*/`. Derivation: AC line verbatim; isolated `GEM_HOME`
   used specifically so this test never touches the real system/user gem
-  environment (the task's staging-vs-production discipline, applied to
-  gem installs).
+  environment (the staging-vs-production discipline, applied to gem
+  installs).
 
 ### TC-1502-109 — `require 'dmud'` works from a directory outside the repo, using only the installed gem
 - **Covers:** #20 AC "`require 'dmud'` works from outside the repo" + #8
@@ -1242,15 +1374,17 @@ two areas. Required by the task ("use a Gate subclass in the test").
 
 ### TC-1502-110 — running the example world from outside the repo, via the installed gem
 - **Covers:** #20 AC + #8 "running the example from outside the repo"
-- **Type:** automated minitest (subprocess)
+- **Type:** automated minitest (subprocess, ~30s timeout — see Conventions)
 - **Setup:** same `GEM_HOME`/`GEM_PATH` as TC-1502-109; copy (or
   reference by absolute path) the `examples/` script to/from the scratch
   directory; `cwd` outside the repo
 - **Input:** `ruby <path to the example script> < <canned command script>`
   (short script: one move, then EOF)
 - **Expected:** exit status `0` (via the EOF path, per Section G); no
-  `LoadError`; room descriptions appear in stdout. Derivation: #21 AC,
-  explicit required-coverage line, verbatim.
+  `LoadError`; the output contains a `"Location: Foyer"` line (per the
+  bare-area-name ban in Conventions, defect A — not a loose "room
+  descriptions appear" check). Derivation: #21 AC, explicit
+  required-coverage line, verbatim.
 
 ### TC-1502-111 — gemspec runtime dependencies are a superset of every bare `require` in `lib/`
 - **Covers:** #21 required coverage "The gemspec's declared deps match
@@ -1264,28 +1398,25 @@ two areas. Required by the task ("use a Gate subclass in the test").
   `spec.runtime_dependencies.map(&:name)`. Derivation: required-coverage
   line verbatim.
 
-### TC-1502-112 — the readline/reline require contradiction (flagged ambiguity, test asserts the resolvable half only)
-- **Covers:** #20 "Why reline is declared" + TC-1502-111, isolating the one
-  specific case worth calling out by name
+### TC-1502-112 — the code requires `reline` and calls `Reline.readline` directly; `readline`/`Readline` are absent (RULING #10, no longer a flagged contradiction)
+- **Covers:** #20 "Why reline is declared" + TC-1502-111
 - **Type:** automated minitest (static scan)
-- **Setup:** read the file that drives the prompt (currently
-  `class_player.rb`, future `lib/dmud/player.rb`)
-- **Input:** its top-of-file `require` line(s)
-- **Expected:** does **not** contain a bare `require 'readline'` while
-  the gemspec declares only `reline` as a runtime dependency — i.e.
-  whatever module the prompt-reading code ends up calling
-  (`Readline.readline` today) must be backed by a require that's actually
-  declared. Derivation + **ambiguity flagged explicitly in the report**:
-  the AC says "The code requires `reline` directly," but the *existing*
-  code calls `Readline.readline(...)` (capital-R `Readline`, the
-  separate bundled-gem compatibility shim) — on Ruby 3.4+/4.0, `require
-  'reline'` alone does **not** define the `Readline` constant; that needs
-  `require 'readline'` (which itself pulls in `reline`). This test only
-  asserts the one unambiguous half: *if* only `reline` is declared, the
-  code must not bare-`require 'readline'`. It intentionally does **not**
-  assert which specific module/method the implementation calls to read a
-  line (`Readline.readline` vs. `Reline.readline` vs. something else) —
-  that's exactly the open question flagged for I)ruid.
+- **Setup:** read every file under `lib/` and `examples/`
+- **Input:** n/a
+- **Expected, all definitive per RULING #10:**
+  1. No file contains a bare `require 'readline'`.
+  2. No file references the `Readline` constant (no `Readline.readline`,
+     `Readline.completion_...`, etc. — the compatibility module is not
+     used anywhere).
+  3. The prompt-reading file (currently `class_player.rb`, future
+     `lib/dmud/player.rb`) contains `require 'reline'` and calls
+     `Reline.readline(...)` (and the equivalent `Reline` completion APIs
+     in place of the old `Readline.completion_*` calls).
+  - Derivation: **RULING #10**, verbatim ("'requires reline directly'
+    means the code calls `Reline.readline` and nothing requires
+    'readline'"). This fully resolves what the step-3 draft flagged as a
+    contradiction: there is now one unambiguous expected implementation,
+    not an open question for I)ruid.
 
 ---
 
@@ -1296,21 +1427,32 @@ two areas. Required by the task ("use a Gate subclass in the test").
   real input into the real example world process (not hand-constructed
   objects) and checks stdout and exit code." Also exercises, in one run:
   #4 matching, #2 Invalid Command, the hidden-area reachability behavior,
-  and #5's clean EOF exit — a deliberately broad integration pass on top
-  of the focused unit-level tests above.
-- **Type:** automated minitest (subprocess)
+  and #5's clean EOF exit.
+- **Type:** automated minitest (subprocess, **~30s timeout** — this run
+  pipes 5 commands before EOF, so its wall-clock floor from `Session`'s
+  per-turn `sleep 1` (#16, unchanged) is ~5s; see Conventions and
+  TC-1502-118)
 - **Setup:** spawn `ruby -Ilib examples/<file>.rb` (the real process,
-  real `Session`, real `Readline`/`Reline` prompt — not a
-  hand-constructed `Player`/`Area` graph)
+  real `Session`, real `Reline` prompt — not a hand-constructed
+  `Player`/`Area` graph)
 - **Input:** piped, in order:
   `"move foyer\n"`, `"move grand hall\n"`, `"move foyer\n"`,
   `"move secret room\n"`, `"xyzzy\n"`, then close stdin (EOF)
-- **Expected:** exit status `0`; stdout contains, **in order**:
-  `"Foyer"`, `"Grand Hall"`, `"Foyer"` (again), `"Secret Room"`,
-  `"Invalid Command"` (for `xyzzy`), and a final `/goodbye/i` message;
-  no literal `\\n` text anywhere (#6); no `MATCH`/`No match`/object-ID
-  debug text anywhere, since `$DEBUG` is off for this run (#3).
-  Derivation: composite of #21 AC's individual bullets, each independently
+- **Expected:** exit status `0`; stdout contains, **in order, as
+  `"Location: <name>"` lines specifically (per the bare-area-name ban in
+  Conventions, defect A — not bare substring matches, since e.g. Grand
+  Hall's own room description text mentions "the Foyer" and would make a
+  bare-substring check pass for the wrong reason)**:
+  `"Location: Foyer"`, `"Location: Grand Hall"`, `"Location: Foyer"`
+  (again — noting per TC-1502-050 that this second one is reached via the
+  entrance-gate/#13 path, not a dedicated loop gate, which is fine, since
+  the test only asserts the `Location:` line, not the mechanism), then
+  `"Location: Secret Room"`; separately, `"Invalid Command"` appears
+  exactly once (for `xyzzy`); and the final line is exactly
+  `"Farewell, Leeroy Jenkins."` (RULING #6). No literal `\\n` text
+  anywhere (#6); no `MATCH`/`No match`/object-ID debug text anywhere,
+  since `$DEBUG` is off for this run (#3). Derivation: composite of
+  #21 AC's individual bullets and the step-4 rulings, each independently
   cited above, exercised together in one real subprocess per the task's
   explicit required-coverage item.
 
@@ -1318,11 +1460,13 @@ two areas. Required by the task ("use a Gate subclass in the test").
 - **Covers:** same required-coverage line, combined with TC-1502-110's
   "from outside the repo" requirement, to get at least one E2E run that
   isn't just `-Ilib` from inside the checkout
-- **Type:** automated minitest (subprocess)
+- **Type:** automated minitest (subprocess, **~30s timeout**, same
+  rationale as TC-1502-113)
 - **Setup:** TC-1502-110's installed-gem/outside-repo setup, run with
   `-d`
 - **Input:** same command script as TC-1502-113
-- **Expected:** same stdout content as TC-1502-113, **plus** `MATCH`
+- **Expected:** same `"Location: <name>"`-line sequence and exact
+  `"Farewell, Leeroy Jenkins."` ending as TC-1502-113, **plus** `MATCH`
   debug lines and object-ID suffixes now present (confirms the guard
   still works correctly when driven through the real installed-gem path,
   not just the in-repo dev path). Derivation: same as TC-1502-113, run a
@@ -1337,9 +1481,12 @@ The tests below exist only where an in-scope fix sits directly next to
 documented out-of-scope behavior and could plausibly disturb it by
 accident; they assert the **unchanged** behavior, not a fix.
 
-### TC-1502-115 — the game-entrance round-trip quirk (#13) is unchanged
+### TC-1502-115 — the game-entrance round-trip quirk (#13) is unchanged, via `"move game lobby"`
 - **Covers:** #13 (out of scope) — confirms #21's #7/#4 changes to the
-  surrounding traversal code didn't accidentally alter this
+  surrounding traversal code didn't accidentally alter this. See also
+  TC-1502-050, which exercises the same underlying mechanism from a
+  different starting command (`"move foyer"` while already in the
+  Foyer, rather than `"move game lobby"` from the Foyer).
 - **Type:** automated minitest
 - **Setup:** Test Fixture World; `"move foyer"` then `"move game lobby"`
   from the Foyer
@@ -1361,28 +1508,34 @@ accident; they assert the **unchanged** behavior, not a fix.
   of scope, so this must still happen.
 
 ### TC-1502-117 — `:say`/`:look`/`:inventory` dispatch remains a true no-op (#15) is unchanged
-- **Covers:** #15 (out of scope) — already partially covered by
-  TC-1502-045/048/049/060 above; this entry cross-references rather than
-  duplicates
+- **Covers:** #15 (out of scope) — already covered by TC-1502-045/048/
+  049/060 above; this entry cross-references rather than duplicates
 - **Type:** automated minitest
 - **Setup:** see TC-1502-045/048/049/060
 - **Input:** n/a
 - **Expected:** see those test cases — listed here for completeness of the
   "confirm unchanged out-of-scope behavior" requirement, not as a new test.
 
-### TC-1502-118 — `Session`'s infinite loop / per-turn `sleep 1` (#16) — intentionally not automated
+### TC-1502-118 — `Session`'s infinite loop / per-turn `sleep 1` (#16) — intentionally not automated, but its timing governs every subprocess test's timeout (defect D)
 - **Covers:** #16 (out of scope)
-- **Type:** manual check (explicitly **not** automated — see rationale)
+- **Type:** manual check (explicitly **not** automated as its own test —
+  see rationale)
 - **Setup:** n/a
 - **Input:** n/a
 - **Expected:** n/a
 - **Rationale (not a test):** `Session.new` still never returns and
-  still sleeps 1 second per turn; every E2E test in Sections G and M
-  already indirectly depends on this (each piped command takes ≥1s to
-  process), which is a sufficient implicit regression signal. Writing a
-  dedicated timing-assertion test would be slow and flaky for no
-  additional coverage, so this is explicitly skipped rather than silently
-  omitted — flagged in the report.
+  still sleeps 1 second per turn. This is the authoritative place where
+  that fact is converted into a concrete number for every other
+  subprocess test in this document: a run piping `N` commands before
+  EOF/Ctrl-C has a wall-clock floor of roughly `N` seconds (one per
+  `sleep 1` between turns), before the process even starts tearing down.
+  TC-1502-113/114 (5 commands, ~5s floor) and every test in Section G
+  (1 command, ~1-2s floor) are all given a **generous ~30 second
+  subprocess timeout** rather than one tightly fitted to their expected
+  floor, specifically to absorb this plus ordinary CI scheduling jitter
+  without becoming flaky. Writing a dedicated timing-assertion test (e.g.
+  "this run takes at least N seconds") would add flakiness for no
+  additional coverage, so that is explicitly skipped.
 
 ---
 
@@ -1424,6 +1577,20 @@ accident; they assert the **unchanged** behavior, not a fix.
   specific AC line; cheap enough to fold into doc review rather than a
   dedicated automated test.
 
+### TC-1502-122 — MANUAL: the example world's gates have descriptive player-facing names, not the old generic ones
+- **Covers:** #21 AC "the example gates get player-facing names" (defect C
+  theme)
+- **Type:** manual check
+- **Setup:** read the `examples/` script's gate-construction calls
+- **Input:** n/a
+- **Expected:** reviewer confirms each `Gate.new(...)` call in the
+  example world is given a descriptive, player-facing name (not left at
+  the default `'New Gate'`, and not merely renamed mechanically) —
+  spot-checked rather than automated since "descriptive" / "player-facing"
+  is a qualitative judgment, and because no automated test in this
+  document hard-codes any specific gate name to compare against (per the
+  gate-naming convention in Conventions). Derivation: AC line verbatim.
+
 ---
 
 ## Coverage summary (by section)
@@ -1444,5 +1611,5 @@ accident; they assert the **unchanged** behavior, not a fix.
 | L — Packaging seam + dependency accuracy | 6 |
 | M — Flagship E2E | 2 |
 | N — Out-of-scope regression confirmations | 4 |
-| O — Documentation (manual) | 3 |
-| **Total** | **121** |
+| O — Documentation (manual) | 4 |
+| **Total** | **122** |
