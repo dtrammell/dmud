@@ -1,21 +1,21 @@
 require 'readline'
 
 ###
-# Class Player
+# Class: Player
 #
-# The Player object represents a player in the game.  Players are able to move around and interact
-# with Areas and Objects via their available command index.  Players are queried for input via the
-# 'query' method which then processes the command index for a match and executes the 'command'
-# method if a valid command is matched.
-#
+# The Player object represents a player in the game.  Players are able to move around and
+# interact with Areas and Objects via their available command index.  Players are queried
+# for input via the 'query' method which then processes the command index for a match and
+# executes the 'command' method if a valid command is matched.
+###
 
 class Player < MobileObject
 	# Initialization
 	def initialize(
-	       name,
-			 location,
-			 description = ''
-		 )
+		name,
+		location,
+		description = ''
+	)
 		super
 
 		@carryable = false
@@ -85,7 +85,7 @@ class Player < MobileObject
 			end
 		end
 
-		self.message "Invalid Command" if validcommand == false	
+		self.message "Invalid Command" if validcommand == false
 	end
 
 	# Process a Player Command
@@ -103,16 +103,16 @@ class Player < MobileObject
 				area = input.match(/[^\s]\s(.*)/).captures[0]
 				puts "Moving to Area '%s'" % area if $DEBUG
 
-      	   # Lookup the destination Area's Gate by name
-         	gate = self.location.gate_lookup( area )
+				# Lookup the destination Area's Gate by name
+				gate = self.location.gate_lookup( area )
 
-	         # Move object to the target Area
-   	      if gate
-      	      return self.move( gate )
-         	else
-            	puts "Area '%s' not accessible from here." % area
+				# Move object to the target Area
+				if gate
+					return self.move( gate )
+				else
+					puts "Area '%s' not accessible from here." % area
 					return false
-   	      end
+				end
 			end
 		# Process Custom Commands
 		when :custom
@@ -123,4 +123,3 @@ class Player < MobileObject
 	# TODO: Player command to register/delete custom commands from index
 
 end
-

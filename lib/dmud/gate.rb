@@ -1,11 +1,12 @@
 ###
 # Class: Gate
 #
-# A Gate is an entrance, exit, or both, to an Area.  A Gate allows players or other objects to enter or exit
-# an Area by interacting with it.  Gates can be locked or unlocked, or have other prerequisites to being
-# able to use them.  A Gate will link one Area to at least one other, therefore two (or more) Areas will share a Gate.
-# Areas that share a gate may be local to a single server, or reside on different servers.
-#
+# A Gate is an entrance, exit, or both, to an Area.  A Gate allows players or other objects
+# to enter or exit an Area by interacting with it.  Gates can be locked or unlocked, or have
+# other prerequisites to being able to use them.  A Gate will link one Area to at least one
+# other, therefore two (or more) Areas will share a Gate.  Areas that share a gate may be
+# local to a single server, or reside on different servers.
+###
 
 class Gate < DMUDObject
 	attr_reader   :metadata, :areas
@@ -13,8 +14,8 @@ class Gate < DMUDObject
 
 	# Initialization
 	def initialize(
-	       name = 'New Gate'
-		)
+		name = 'New Gate'
+	)
 		super()
 
 		# Instance Variables
@@ -37,23 +38,23 @@ class Gate < DMUDObject
 
 		# If the Gate is a game entrance, there is no source area
 		if @game_entrance
-			# Fudge the GameObject's current location to be one of the connected areas 
+			# Fudge the MobileObject's current location to be one of the connected areas
 			@object.location = @areas[0][:object]
 		end
 
-		# Verify that the GameObject is leaving a valid connected source Area or it's a game entrance
+		# Verify that the MobileObject is leaving a valid connected source Area or it's a game entrance
 		@source_area = nil
 		@areas.each do | area |
 			if area[:object] == @object.location
 				@source_area = @object.location
 			end
 		end
-		if !@source_area	
+		if !@source_area
 			response << "ERROR: Incoming object does not source from a connected Area"
 			raise response
 		end
 
-		# Verify that this gate can be traversed 
+		# Verify that this gate can be traversed
 		if !@traversable
 			response << "Gate '%s' cannot be traversed.\n" % @metadata[:name]
 			@object.message response
@@ -76,7 +77,7 @@ class Gate < DMUDObject
 		when @areas.count == 1
 			@destination_area = @source_area
 			response << "This Gate seems to only return to the Area you're leaving...\n"
-		# When there is only one possible destination (2 Areas) 
+		# When there is only one possible destination (2 Areas)
 		when @areas.count == 2
 			@areas.each do | area |
 				@destination_area = area[:object] if area[:object] != @source_area
@@ -107,7 +108,7 @@ class Gate < DMUDObject
 	end
 
 	# Specific Gate actions that happen while traversing the gate
-	# (this should be overridden by any inhereting classes)
+	# (this should be overridden by any inheriting classes)
 	def gate_specific
 	end
 
@@ -118,6 +119,4 @@ class Gate < DMUDObject
 			:visible => visibility
 		}
 	end
-
 end
-

@@ -1,21 +1,21 @@
 ###
 # Class: Area
 #
-# The Area object.  This object represents a distinct area that can be described in the game, such
-# as a room in a castle, an open field, a forest grove, etc.  Areas have gates (or exits in MUD
-# nomenclature) which provide an entrance, exit, or both, to the area.  Areas may have unique
-# commands relative to the area.  Areas can contain other objects, including players.
-#
+# The Area object.  This object represents a distinct area that can be described in the game,
+# such as a room in a castle, an open field, a forest grove, etc.  Areas have gates (or exits
+# in MUD nomenclature) which provide an entrance, exit, or both, to the area.  Areas may have
+# unique commands relative to the area.  Areas can contain other objects, including players.
+###
 
 class Area < DMUDObject
 	attr_accessor :metadata, :gates, :contents
 
 	# Initialization
 	def initialize(
-			name        = 'New Area',
-	      region      = nil,
-			description = ''
-		)
+		name        = 'New Area',
+		region      = nil,
+		description = ''
+	)
 		super()
 
 		# Add the Area to the Region if one was specified
@@ -52,7 +52,7 @@ class Area < DMUDObject
 	def exit( object, gate )
 		# Remove the object from the Area's contents
 		@contents.delete( object )
-		
+
 		# Enter the Gate
 		gate.enter( object )
 
@@ -83,7 +83,7 @@ class Area < DMUDObject
 	def add_gate( gate, visible = true )
 		# Add the gate to the Area's Gates List
 		@gates << gate
-		
+
 		# Add the Area to the Gate's Areas List
 		gate.add_area( self, visible )
 
@@ -105,6 +105,4 @@ class Area < DMUDObject
 		# No gate found
 		return nil
 	end
-
 end
-

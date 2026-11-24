@@ -1,8 +1,9 @@
 ###
-# Class Session
+# Class: Session
 #
-# This is the game session object.  The Session object interacts with the game for a single Player object.
-#
+# This is the game session object.  The Session object interacts with the game for a single
+# Player object.
+###
 
 class Session < DMUDObject
 	attr_reader   :id, :player

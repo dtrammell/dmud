@@ -1,19 +1,19 @@
 ###
-# Class Region
+# Class: Region
 #
-# A Region object is a container for Areas.  Regions logically segregate groups of Areas.  A game server
-# will usually only house one Region for its local Areas, but it is possible to define multiple Regions
-# for various organizationsl purposes.
-#
+# A Region object is a container for Areas.  Regions logically segregate groups of Areas.
+# A game server will usually only house one Region for its local Areas, but it is possible
+# to define multiple Regions for various organizational purposes.
+###
 
 class Region < DMUDObject
 	attr_accessor :metadata
 
 	# Initialization
 	def initialize(
-	       name        = 'New Region',
-			 description = ''
-	   )
+		name        = 'New Region',
+		description = ''
+	)
 		super()
 
 		# Instance Variables
