@@ -10,7 +10,7 @@ require 'dmud'
 ###
 
 # Entrance Gate for new server connections
-game_entrance_gate = Gate.new( 'Game Entrance' )
+game_entrance_gate = Gate.new( 'Front Door' )
 game_entrance_gate.game_entrance = true
 
 # Game Lobby Area for new server connections
@@ -36,7 +36,7 @@ grand_hall = Area.new(
 	house,
 	'The Grand Hall spreads out before you.  To the South is the Foyer.'
 )
-gate_gh_f = Gate.new( 'Foyer<>Grand Hall Gate' )
+gate_gh_f = Gate.new( 'Grand Archway' )
 foyer.add_gate( gate_gh_f )
 grand_hall.add_gate( gate_gh_f )
 
@@ -46,7 +46,7 @@ stairs = Area.new(
 	house,
 	'The Stairs go up and down.  At the bottom of the Stairs is the Foyer.'
 )
-gate_s_f = Gate.new( 'Foyer<>Stairs Gate' )
+gate_s_f = Gate.new( 'Spiral Staircase' )
 foyer.add_gate( gate_s_f )
 stairs.add_gate( gate_s_f )
 
@@ -56,7 +56,7 @@ secret_room = Area.new(
 	house,
 	'The Secret Room was not meant to be found...  What secrets might it hold???  The only way out is back to the Foyer.'
 )
-gate_sr_f = Gate.new( 'Foyer<>Secret Room Gate' )
+gate_sr_f = Gate.new( 'Hidden Passage' )
 foyer.add_gate( gate_sr_f )
 secret_room.add_gate( gate_sr_f, false )
 

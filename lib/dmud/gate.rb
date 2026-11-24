@@ -31,10 +31,22 @@ class Gate < DMUDObject
 
 	end
 
-	# Enter this Gate
+	# Enter this Gate from the object's current Area and deliver it to the
+	# destination Area.
+	#
+	# Traversal output order (per issue #21, RULING #7):
+	#   1. clear-screen / cursor-home ANSI codes
+	#   2. [$DEBUG] "You have entered the '<name>' Gate [<connection_label>]"
+	#   3. gate_specific output
+	#   4. "You step through the <name>."
+	#   5. [$DEBUG] "You have exited the '<name>' Gate [<connection_label>]"
+	#   6. destination Area description
 	def enter( object )
 		@object = object
-		response = ''
+
+		# Clear the screen at the start of traversal so gate messages are not
+		# wiped by the upcoming Area#describe call.
+		@object.message "\033[2J\033[H"
 
 		# If the Gate is a game entrance, there is no source area
 		if @game_entrance
@@ -50,56 +62,55 @@ class Gate < DMUDObject
 			end
 		end
 		if !@source_area
-			response << "ERROR: Incoming object does not source from a connected Area"
-			raise response
+			raise "ERROR: Incoming object does not source from a connected Area"
 		end
 
 		# Verify that this gate can be traversed
 		if !@traversable
-			response << "Gate '%s' cannot be traversed.\n" % @metadata[:name]
+			response = "Gate '%s' cannot be traversed.\n" % @metadata[:name]
 			@object.message response
 			raise response
 		end
 
-		# Do anything that happens while inside the gate
+		# Do anything that happens while inside the gate (subclass hook).
 		self.gate_specific
 
 		# Do anything related to ingress here
-		@object.message "You have entered the '%s' Gate" % @metadata[:name]
+		@object.message "You have entered the '%s' Gate [%s]" % [ @metadata[:name], connection_label ] if $DEBUG
 
 		# Determine destination area for egress
 		case
 		# No Areas configured
 		when @areas.count < 1
-			response << "ERROR: This Gate has no Areas configured."
-			raise response
-		# Only one area configured
+			raise "ERROR: This Gate has no Areas configured."
+		# Only one area configured (loop gate)
 		when @areas.count == 1
 			@destination_area = @source_area
-			response << "This Gate seems to only return to the Area you're leaving...\n"
+			@object.message "This Gate seems to only return to the Area you're leaving..."
 		# When there is only one possible destination (2 Areas)
 		when @areas.count == 2
 			@areas.each do | area |
 				@destination_area = area[:object] if area[:object] != @source_area
 			end
-			response << "You traverse the gate...\n"
 		# When there is more than one possible destination
 		when @areas.count > 2
 			#TODO: menu for choices (@object.query)
 		end
-		@object.message response
+
+		# Non-debug traversal line that always prints.
+		@object.message "You step through the %s." % @metadata[:name]
+
+		# Do anything related to egress here
+		@object.message "You have exited the '%s' Gate [%s]" % [ @metadata[:name], connection_label ] if $DEBUG
 
 		# Exit the Gate
 		self.exit( @destination_area )
 	end
 
-	# Exit this Gate
+	# Exit this Gate into the given destination Area.
 	def exit( destination )
 		# Set the destination location on the object
 		@object.location = destination
-
-		# Do anything related to egress here
-		@object.message "You have exited the '%s' Gate" % @metadata[:name]
 
 		# Enter the Area
 		destination.enter( @object )
@@ -107,8 +118,8 @@ class Gate < DMUDObject
 		return true
 	end
 
-	# Specific Gate actions that happen while traversing the gate
-	# (this should be overridden by any inheriting classes)
+	# Specific Gate actions that happen while traversing the gate.
+	# Subclasses override this to add custom behavior (locks, tolls, flavor).
 	def gate_specific
 	end
 
@@ -118,5 +129,35 @@ class Gate < DMUDObject
 			:object => area,
 			:visible => visibility
 		}
+	end
+
+	# Return a short, human-readable label describing this Gate's connected
+	# Areas.
+	#
+	# Formats (per issue #21, RULING #4):
+	#   two visible sides:  "Foyer <> Grand Hall"
+	#   hidden side:        "Foyer <> Secret Room (hidden)"
+	#   one-area loop:      "Foyer (loop)"
+	#   zero areas:         "(no areas)"
+	# Area order follows @areas insertion order.
+	def connection_label
+		return '(no areas)' if @areas.empty?
+		return "%s (loop)" % @areas[0][:object].metadata[:name] if @areas.count == 1
+
+		@areas.map do | area |
+			label = area[:object].metadata[:name]
+			label << ' (hidden)' unless area[:visible]
+			label
+		end.join(' <> ')
+	end
+
+	# Return a short display string for the Gate.
+	def to_s
+		"%s [%s]" % [ @metadata[:name], connection_label ]
+	end
+
+	# Return a detailed inspection string for the Gate.
+	def inspect
+		"#<Gate id=%s name=%s connections=%s>" % [ @id, @metadata[:name], connection_label ]
 	end
 end

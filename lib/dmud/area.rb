@@ -59,19 +59,21 @@ class Area < DMUDObject
 		return true
 	end
 
+	# Build and return the room description for this Area.
+	#
+	# Output:
+	#   A String containing the location name, optional description, and a
+	#   list of objects currently in the area.  Object IDs are only appended
+	#   when $DEBUG is on.
 	def describe
 		desc = ''
-		if !$DEBUG
-			desc << "\033[2J" # Clear the Screen
-			desc << "\033[H" # Move cursor to HOME position
-		end
 		desc << "Location: %s" % @metadata[:name]
 		desc << " (ID:%s)" % @id if $DEBUG
 		desc << "\n\n" + @metadata[:description] + "\n"
 		desc << "\n%s contains:\n" % @metadata[:name] if @contents.count > 0
 		@contents.each do | obj |
 			desc << "  * %s" % obj.metadata[:name]
-			desc << " (ID:%s)" % obj.id
+			desc << " (ID:%s)" % obj.id if $DEBUG
 			desc << "\n"
 		end
 		desc << "\n"
