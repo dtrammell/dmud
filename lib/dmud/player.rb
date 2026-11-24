@@ -76,16 +76,12 @@ class Player < MobileObject
 		# a single line and no literal "\n" characters appear in the output.
 		puts
 
-		# Read Player input.  Reline.readline returns nil on EOF; unit 4 adds
-		# the clean exit handling for that case.
+		# Read Player input.  Reline.readline returns nil on EOF; Session#start
+		# catches the :eof sentinel and exits cleanly.
 		input = Reline.readline( "%s: Command> " % @metadata[:name], true )
+		return :eof if input.nil?
 
 		puts "Input: '%s'" % input if $DEBUG
-
-		# An EOF at this point is handled in Session#start (see unit 4).
-		# Defensive guard: treat nil as an empty line so unit-3 matching tests
-		# do not crash if a test stub accidentally returns nil.
-		input = '' if input.nil?
 
 		# Strip leading/trailing whitespace before matching.
 		input = input.strip
