@@ -45,8 +45,10 @@ end
 # NPC MobileObject
 class NPC < MobileObject
 	# Initialization
-	def initialize
-		super
+	# Forwards name, location, and optional description to MobileObject,
+	# then marks this object as non-carryable.
+	def initialize(*args)
+		super(*args)
 
 		@carryable = false
 	end
@@ -55,8 +57,10 @@ end
 # Monster Object MobileObject
 class MOB < MobileObject
 	# Initialization
-	def initialize
-		super
+	# Forwards name, location, and optional description to MobileObject,
+	# then marks this object as non-carryable.
+	def initialize(*args)
+		super(*args)
 
 		@carryable = false
 	end
@@ -65,8 +69,10 @@ end
 # Carryable Item
 class Item < MobileObject
 	# Initialization
-	def initialize
-		super
+	# Forwards name, location, and optional description to MobileObject,
+	# then marks this object as carryable.
+	def initialize(*args)
+		super(*args)
 
 		@carryable = true
 	end
