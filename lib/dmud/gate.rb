@@ -72,13 +72,13 @@ class Gate < DMUDObject
 			raise response
 		end
 
+		# Do anything related to ingress here.
+		@object.message "You have entered the '%s' Gate [%s]" % [ @metadata[:name], connection_label ] if $DEBUG
+
 		# Do anything that happens while inside the gate (subclass hook).
 		self.gate_specific
 
-		# Do anything related to ingress here
-		@object.message "You have entered the '%s' Gate [%s]" % [ @metadata[:name], connection_label ] if $DEBUG
-
-		# Determine destination area for egress
+		# Determine destination area for egress.
 		case
 		# No Areas configured
 		when @areas.count < 1
@@ -86,7 +86,6 @@ class Gate < DMUDObject
 		# Only one area configured (loop gate)
 		when @areas.count == 1
 			@destination_area = @source_area
-			@object.message "This Gate seems to only return to the Area you're leaving..."
 		# When there is only one possible destination (2 Areas)
 		when @areas.count == 2
 			@areas.each do | area |
@@ -97,10 +96,14 @@ class Gate < DMUDObject
 			#TODO: menu for choices (@object.query)
 		end
 
+		# One-area loop flavor text prints after gate_specific and before the
+		# step-through line.
+		@object.message "This Gate seems to only return to the Area you're leaving..." if @areas.count == 1
+
 		# Non-debug traversal line that always prints.
 		@object.message "You step through the %s." % @metadata[:name]
 
-		# Do anything related to egress here
+		# Do anything related to egress here.
 		@object.message "You have exited the '%s' Gate [%s]" % [ @metadata[:name], connection_label ] if $DEBUG
 
 		# Exit the Gate
