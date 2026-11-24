@@ -44,14 +44,13 @@ walkthrough of the example world.
 
 ## Requirements
 
-- **Ruby.** The example world and commands below were tested on
-  **Ruby 4.0.5** (this repo's development machine) and, per the project's
-  issue history, also run on **Ruby 3.4.6** (the environment the original
-  bug reports were filed from). No `Gemfile`, gemspec, or `.ruby-version`
-  file pins a version, and the code has not been tested on anything older —
-  treat other versions as untested rather than assumed-compatible.
-- **Standard library only:** `readline` (command-line editing/history/tab
-  completion) and `securerandom` (object IDs). No third-party gems.
+- **Ruby 3.3 or newer.** The `.ruby-version` file pins `3.3.0`, the
+  `dmud.gemspec` declares `required_ruby_version >= 3.3`, and the code is
+  tested on Ruby 4.0.5. Older versions are unsupported.
+- **Runtime dependency:** `reline` (command-line editing/history/tab
+  completion) is declared in the gemspec because it is a bundled gem on
+  Ruby 3.4+/4.0 rather than default stdlib.
+- **Standard library:** `securerandom` (object IDs).
 
 ## Quick start
 

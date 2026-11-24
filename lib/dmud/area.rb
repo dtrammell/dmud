@@ -66,7 +66,9 @@ class Area < DMUDObject
 	#   list of objects currently in the area.  Object IDs are only appended
 	#   when $DEBUG is on.
 	def describe
-		desc = ''
+		# Use String.new so the buffer is mutable even when Ruby treats string
+		# literals as frozen by default.
+		desc = String.new
 		desc << "Location: %s" % @metadata[:name]
 		desc << " (ID:%s)" % @id if $DEBUG
 		desc << "\n\n" + @metadata[:description] + "\n"

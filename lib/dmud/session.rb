@@ -41,14 +41,14 @@ class Session < DMUDObject
 			end
 			@player.message( message )
 
-			# Get Player Input and Process it
-			result = @player.query
-
-			# EOF sentinel: clean exit.
-			if result == :eof
+			# If stdin has reached EOF, do not draw another prompt; exit cleanly.
+			if $stdin.eof?
 				exit_cleanly( reason: "EOF (end of input)" )
 				return
 			end
+
+			# Get Player Input and Process it
+			@player.query
 
 			sleep 1
 		end

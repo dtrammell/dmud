@@ -145,7 +145,9 @@ class Gate < DMUDObject
 		return "%s (loop)" % @areas[0][:object].metadata[:name] if @areas.count == 1
 
 		@areas.map do | area |
-			label = area[:object].metadata[:name]
+			# Duplicate the name so appending "(hidden)" does not mutate the
+			# Area's actual display name.
+			label = area[:object].metadata[:name].dup
 			label << ' (hidden)' unless area[:visible]
 			label
 		end.join(' <> ')
