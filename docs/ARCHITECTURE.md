@@ -536,33 +536,50 @@ still sleeps one second after every turn. The loop now exits cleanly
 
 ## The `$DEBUG` flag
 
-Counting directly from the current source, `$DEBUG` is checked in eight
-places:
+Counting every runtime `if $DEBUG` / `... if $DEBUG` check in `lib/dmud/*.rb`
+via `grep -n 'DEBUG' lib/dmud/*.rb` (and excluding the handful of comment
+lines that merely *describe* `$DEBUG` behavior, such as the traversal-order
+comment above `Gate#enter`), `$DEBUG` is checked in **11 places**:
 
-1. `Area#initialize` — the `"Area '<name>' (ID:<uuid>) Initialized"` line
-   (unchanged from before this batch).
-2. `Area#describe` — the area's own `(ID:<uuid>)` suffix after
-   `"Location: <name>"` (unchanged, already correct before this batch).
-3. `Area#describe` — the per-item `(ID:<uuid>)` suffix in the contents
-   listing. **This used to print unconditionally; it's now correctly
-   gated** ([#3](https://github.com/dtrammell/dmud/issues/3), fixed).
-4. `Player#query` — the `"Input: '<input>'"` line (unchanged, already
-   correct before this batch).
-5. `Player#query` — the `MATCH!!!` line printed on a successful match.
-   **This used to print unconditionally (there was no guard at all); it's
-   now correctly gated** ([#3](https://github.com/dtrammell/dmud/issues/3),
+1. `Area#initialize` (`area.rb:34`) — the
+   `"Area '<name>' (ID:<uuid>) Initialized"` line (unchanged from before
+   this batch).
+2. `Area#describe` (`area.rb:73`) — the area's own `(ID:<uuid>)` suffix
+   after `"Location: <name>"` (unchanged, already correct before this
+   batch).
+3. `Area#describe` (`area.rb:78`) — the per-item `(ID:<uuid>)` suffix in
+   the contents listing. **This used to print unconditionally; it's now
+   correctly gated** ([#3](https://github.com/dtrammell/dmud/issues/3),
    fixed).
-6. `Gate#enter` — the `"You have entered the '<name>' Gate [...]"` line
-   (new this batch).
-7. `Gate#enter` — the `"You have exited the '<name>' Gate [...]"` line
-   (new this batch).
-8. `Session#exit_cleanly` — the whole EOF/Interrupt debug dump (reason or
-   exception, backtrace, session/player/location state) that prints before
-   the always-on goodbye line (new this batch, part of
-   [#5](https://github.com/dtrammell/dmud/issues/5)'s fix).
+4. `Gate#enter` (`gate.rb:76`) — the `"You have entered the '<name>' Gate
+   [...]"` line (new this batch).
+5. `Gate#enter` (`gate.rb:107`) — the `"You have exited the '<name>' Gate
+   [...]"` line (new this batch). **This line is inside `Gate#enter`
+   itself, right before it calls `self.exit(@destination_area)` — not
+   inside the separate `Gate#exit` method**, which has no `$DEBUG` check
+   of its own.
+6. `Player#query` (`player.rb:98`) — the `"Input: '<input>'"` line
+   (unchanged, already correct before this batch).
+7. `Player#query` (`player.rb:106`) — the
+   `"Processing command '<key>'..."` line printed for every command-table
+   entry checked, whether or not it ends up matching.
+8. `Player#query` (`player.rb:108`) — the `MATCH!!!` line printed on a
+   successful match. **This used to print unconditionally (there was no
+   guard at all); it's now correctly gated**
+   ([#3](https://github.com/dtrammell/dmud/issues/3), fixed).
+9. `Player#query` (`player.rb:113`) — the `"  No match (...)"` line
+   printed for every command-table entry that does *not* match before the
+   first one that does.
+10. `Player#command` (`player.rb:142`) — the `"Moving to Area '<name>'"`
+    line printed while handling a `:move` command, just before the
+    `gate_lookup` call.
+11. `Session#exit_cleanly` (`session.rb:69`) — the whole EOF/Interrupt
+    debug dump (reason or exception, backtrace, session/player/location
+    state) that prints before the always-on goodbye line (new this batch,
+    part of [#5](https://github.com/dtrammell/dmud/issues/5)'s fix).
 
 Running with `ruby -d` (or setting `$DEBUG = true` directly) turns on all
-eight. Everything that used to print regardless of `$DEBUG` (items 3 and 5
+11. Everything that used to print regardless of `$DEBUG` (items 3 and 8
 above) is fixed; there is no longer a known always-on debug leak in this
 codebase.
 
