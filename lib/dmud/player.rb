@@ -56,6 +56,11 @@ class Player < MobileObject
 		# Set up Reline auto-completion
 		Reline.completion_append_character = ' '
 		Reline.completion_proc = proc { |s| @commandlist.grep(/^#{Regexp.escape(s)}/) }
+
+		# When stdout is not a TTY (e.g. piped input in tests), suppress
+		# Reline's interactive screen-management output so the prompt is
+		# drawn exactly once and input is not echoed.
+		Reline.output = File.open('/dev/null', 'w') unless $stdout.tty?
 	end
 
 	# Incoming message processor for messages received by the MobileObject.
@@ -78,7 +83,18 @@ class Player < MobileObject
 
 		# Read Player input.  Reline.readline returns nil on EOF; Session#start
 		# catches the :eof sentinel and exits cleanly.
-		input = Reline.readline( "%s: Command> " % @metadata[:name], true )
+		#
+		# On a pipe/non-TTY we print the prompt ourselves and call Reline with
+		# an empty prompt so Reline does not echo input or redraw the screen.
+		if $stdout.tty?
+			input = Reline.readline( "%s: Command> " % @metadata[:name], true )
+		else
+			print "%s: Command> " % @metadata[:name]
+			input = Reline.readline( '', true )
+			# End the prompt line now that input has been read; this keeps the
+			# prompt line itself clean and puts subsequent output on its own line.
+			puts
+		end
 		return :eof if input.nil?
 
 		puts "Input: '%s'" % input if $DEBUG
