@@ -1,41 +1,134 @@
 # Known Issues
 
-This is a plain-language summary of current limitations and quirks in DMUD, grouped by area. Every item links to its tracked issue on the [issue tracker](https://github.com/dtrammell/dmud/issues); read the issue for reproduction steps and suggested fixes. Everything here was checked against commit `e3d2c09` on `main`: either read directly in the source, or reproduced by running `test_game.rb` with piped input on Ruby 4.0.5 (the issues filed by the tester bot, #1–#11, were originally reported from Ruby 3.4.6 — each was independently re-checked here on 4.0.5 rather than assumed to still apply).
+This is a plain-language summary of current limitations, quirks, and
+planned design work in DMUD, grouped by area. Every item links to its
+tracked issue on the [issue tracker](https://github.com/dtrammell/dmud/issues);
+read the issue for the full discussion. Everything here was checked against
+commit `d34cfb5ae7c51efe96d005019785497350942d42` on
+`feature/issue-21-low-hanging-batch`: either read directly in
+`lib/dmud/`, or confirmed by running the `test/` suite (`rake test`: 114
+runs, 5173 assertions, 0 failures, 0 errors) and by running
+`examples/example_world.rb` directly.
 
-## World-building API ergonomics
+SE run #1502 ([#21](https://github.com/dtrammell/dmud/issues/21)) fixed
+#1-#9 and packaged the engine as a gem
+([#20](https://github.com/dtrammell/dmud/issues/20)) in this same commit;
+those nine entries have been removed from this document rather than kept
+as "fixed" trivia. Everything below either predates that batch and is
+still open, or is new design work filed alongside it.
 
-- **Constructor arguments look like keyword arguments but are not** ([#11](https://github.com/dtrammell/dmud/issues/11)). `test_game.rb` writes calls like `Area.new( name = "Foyer", region = house, description = '...' )`. `name = "Foyer"` is a plain local-variable assignment; the values are passed positionally, in the order written. This works only because the order happens to match each constructor's real parameter order. Swapping two lines, or leaving one out, silently passes the wrong value into the wrong parameter with no error. This affects `Region.new`, `Area.new`, `Gate.new`, `MobileObject.new` and its subclasses (including `Player.new`), `Session.new`, `Area#add_gate`, and `Gate#add_area`. See the [note on constructor arguments](ARCHITECTURE.md#a-note-on-constructor-arguments-everywhere-in-this-document) in the architecture doc, which calls this out again in each class's constructor section.
-- **Several pieces of instance state are set but never used anywhere** ([#17](https://github.com/dtrammell/dmud/issues/17)): `Gate@locked` and `Gate@traversable` (the latter is checked by `enter`, but nothing can ever set it, since there's no accessor); `Area@proximity` (set to `:local`, presumably intended for the planned distributed model); `MobileObject@movable` and `@carryable` (never checked when moving an object or trying to carry one). A world builder cannot lock a gate, mark an object immovable, or prevent it from being carried today, even though the variables exist.
-- **Typos, a class/file name mismatch, and mixed tabs/spaces** ([#9](https://github.com/dtrammell/dmud/issues/9)): `class_movable_object.rb` defines `MobileObject`, not `MovableObject` — the file name and the class name disagree (see the [MobileObject section](ARCHITECTURE.md#mobileobject-class_movable_objectrb) of the architecture doc). There's also a stray "GameOjbects" comment, a stray "i" in a comment marker, "organizationsl" for "organizational," comments that refer to a nonexistent "GameObject" class (meaning `MobileObject`), and inconsistent tabs/spaces across several files.
+## Current limitations and quirks
 
-## Object construction
+### World-building API ergonomics
 
-- **`Item`, `NPC`, and `MOB` cannot currently be created** ([#1](https://github.com/dtrammell/dmud/issues/1)). Their `initialize` methods take no arguments and call a bare `super`, which forwards zero arguments into `MobileObject#initialize`, which requires `name` and `location`. Both `Item.new` and `Item.new("Sword", some_area)` raise `ArgumentError`. `test_game.rb` never exercises these classes, which is why this hasn't been caught by the example world. See [NPC, MOB, Item](ARCHITECTURE.md#npc-mob-item) in the architecture doc.
+- **Constructors still take plain positional arguments, not keyword
+  arguments** ([#11](https://github.com/dtrammell/dmud/issues/11), open).
+  `examples/example_world.rb` no longer writes the misleading
+  `name = "Foyer"` fake-keyword style that the old `test_game.rb` used —
+  calls are now plain positional, e.g.
+  `Area.new('Foyer', house, 'description...')` — but the constructors
+  themselves (`Region.new`, `Area.new`, `Gate.new`, `MobileObject.new` and
+  its subclasses, `Session.new`) are unchanged: argument order still
+  matters and there's still no error if you get it wrong.
+- **Several pieces of instance state are set but never used anywhere**
+  ([#17](https://github.com/dtrammell/dmud/issues/17), open):
+  `Gate@locked` and `Gate@traversable` (the latter is checked by `enter`,
+  but nothing can set it, since there's still no accessor);
+  `Area@proximity` (`:local`, presumably for the planned distributed
+  model); `MobileObject@movable` and `@carryable` (never checked when
+  moving an object or trying to carry one — `carryable` is set correctly
+  per subclass now that [#1](https://github.com/dtrammell/dmud/issues/1) is
+  fixed, but it's still not a real, checked feature, and it's still not a
+  constructor parameter).
 
-## Commands and input
+### Gates and movement
 
-- **"Invalid Command" is never shown** ([#2](https://github.com/dtrammell/dmud/issues/2)). The placeholder `:somecommand` entry in `Player#initialize` uses the empty regex `//`, which matches every input, so the flag that would trigger "Invalid Command" is always true. A side effect: every command you type actually runs twice through `Player#command` — once for its real entry, once more for the always-matching placeholder (which does nothing).
-- **Debug output prints even when `$DEBUG` is off** ([#3](https://github.com/dtrammell/dmud/issues/3)). The `MATCH!!!`/`No match` lines in `Player#query`, and the per-item `(ID:<uuid>)` suffix on each line of an area's contents listing in `Area#describe`, print unconditionally. Only a few other debug lines (see [The `$DEBUG` flag](ARCHITECTURE.md#the-debug-flag) in the architecture doc) are actually gated on `$DEBUG`.
-- **Command patterns require a trailing space, so bare words don't match their own entry** ([#4](https://github.com/dtrammell/dmud/issues/4)). `/^l |^look |^inspect /` and similar patterns need a literal space character after the keyword. Typing just `look` or `i` with nothing after it does not match the `:look`/`:inventory` entries (it only "matches" via the always-on placeholder from the item above, which is a no-op). `move`/`go`/etc. with no area name after it has the same problem.
-- **`say`, `look`, and `inventory` are recognized but do nothing** ([#15](https://github.com/dtrammell/dmud/issues/15)). `Player#command`'s `:extended` branch only has a case for `:move`. Combined with the "Invalid Command never shown" item above, typing `say hello` or `look` produces no feedback of any kind.
+- **`Gate` still stores per-traversal state in instance variables**
+  ([#12](https://github.com/dtrammell/dmud/issues/12), open).
+  `Gate#enter` still keeps `@object`, `@source_area`, and
+  `@destination_area` on the `Gate` itself, which is a single object
+  shared by everyone who uses it. Two travelers through the same gate at
+  once — or any multi-session/networked future — would still overwrite
+  each other's in-flight state.
+- **Moving to the Game Lobby from the Foyer still sends you back to the
+  Foyer** ([#13](https://github.com/dtrammell/dmud/issues/13), open). The
+  entrance gate (now named "Front Door") still unconditionally rewrites
+  the traveling object's location to whichever area was linked to it
+  first (the Lobby) before resolving a destination, so re-entering it
+  from the Foyer still round-trips back to the Foyer with no error.
+  Confirmed still present by the passing `test_entrance_round_trip_unchanged`
+  and `test_move_foyer_while_in_foyer` tests.
+- **A gate linking more than two areas is still unimplemented and still
+  crashes when used** ([#14](https://github.com/dtrammell/dmud/issues/14),
+  open). The `@areas.count > 2` branch in `Gate#enter` is still an empty
+  `# TODO`; the destination is left unresolved and the subsequent
+  `exit(nil)` call still fails with `NoMethodError`. `Area#exit` also still
+  removes an object from its area's contents *before* calling
+  `gate.enter`, so an exception raised during traversal still leaves the
+  object's `location` pointing at the old area while it's already been
+  removed from that area's contents, with nothing to rescue it. Confirmed
+  still broken by the passing `test_three_area_gate_unsupported` test,
+  which expects exactly this crash.
 
-## Session and lifecycle
+### Commands
 
-- **`Session.new` never returns** ([#16](https://github.com/dtrammell/dmud/issues/16)). `Session#initialize` calls `self.start`, which is an infinite `loop`, so construction and "running the game" are the same call. A world file can't keep a reference to the session once it's created, run more than one, or hand it off to anything else; the `session = Session.new(...)` line in `test_game.rb` never completes while the game is running. The loop also calls `sleep 1` after every single command, and stores `@player.query`'s result in a local variable that's never used.
-- **Ctrl-D / EOF at the prompt crashes the game** ([#5](https://github.com/dtrammell/dmud/issues/5)). `Readline.readline` returns `nil` on EOF, and `Player#query` immediately calls `.match` on whatever it got back, raising `NoMethodError`. This is a known, already-tracked failure mode, not a sign that something else broke — it will happen any time piped input runs out or a user presses Ctrl-D.
-- **The prompt shows a literal `\n` and redraws multiple times on modern Ruby** ([#6](https://github.com/dtrammell/dmud/issues/6)). `Player#query`'s prompt string has an embedded newline (`"\n%s: Command> "`); Ruby's Reline-backed `Readline` doesn't render it as a real line break, so the raw `\n` characters and a repeated prompt show up in the terminal — originally reported on Ruby 3.4.6, reproduced here on Ruby 4.0.5.
+- **`say`, `look`, and `inventory` are recognized but still do nothing**
+  ([#15](https://github.com/dtrammell/dmud/issues/15), open).
+  `Player#command` now has explicit `:say`/`:look`/`:inventory` branches
+  (there used to be no branch at all for them), but each one just
+  `return`s `true` — none of them produce any player-visible output. The
+  symptom (silence) is unchanged even though the underlying code gained
+  real branches.
 
-## Gates and movement
+### Session lifecycle
 
-- **`Gate` stores per-traversal state in instance variables, which is not safe for more than one traveler** ([#12](https://github.com/dtrammell/dmud/issues/12)). `Gate#enter` keeps `@object`, `@source_area`, and `@destination_area` on the `Gate` itself, which is a single object shared by everyone who uses it. Two travelers through the same gate at the same time — or any multi-session/networked future — would overwrite each other's in-flight state. It also means a gate's three-or-more-areas branch (next item) can silently reuse a stale destination left over from someone else's previous trip.
-- **Moving to the Game Lobby from the Foyer sends you back to the Foyer** ([#13](https://github.com/dtrammell/dmud/issues/13)). The Foyer is linked to the Game Lobby through the game-entrance gate. `move game lobby` from the Foyer finds that gate by name (visibility doesn't block `gate_lookup` — see below), but `Gate#enter`'s game-entrance workaround unconditionally rewrites your location to the Lobby before resolving a destination, so the destination then resolves back to the Foyer. You "traverse the gate" and land exactly where you started, with no error. Verified by running `move foyer` then `move game lobby`. See [The game-entrance gate](ARCHITECTURE.md#the-game-entrance-gate) for the mechanism.
-- **A gate linking more than two areas is unimplemented and crashes when used** ([#14](https://github.com/dtrammell/dmud/issues/14)). The `@areas.count > 2` branch in `Gate#enter` is an empty `# TODO`; the destination is left unresolved (or stale from a previous trip — see above) and the subsequent `exit(nil)` call fails with `NoMethodError`. More generally, `Area#exit` removes an object from its area's contents *before* calling `gate.enter`, so any exception raised during traversal (no areas configured, not traversable, more than two areas) leaves the object's `location` still pointing at the old area while it's already been removed from that area's contents — and nothing rescues the error, so the whole session crashes.
-- **The clear-screen in `Area#describe` wipes gate traversal messages** ([#7](https://github.com/dtrammell/dmud/issues/7)). "You have entered the Gate," "You traverse the gate...," and "You have exited the Gate" print, and then the next `Area#describe` call immediately emits a clear-screen/cursor-home escape sequence, so in a real terminal those messages (and any future `gate_specific` flavor text) are wiped before a player can read them.
+- **`Session.new` still never returns**
+  ([#16](https://github.com/dtrammell/dmud/issues/16), open).
+  `Session#initialize` still calls `self.start` itself, which is still an
+  infinite loop, so construction and "running the game" are still the
+  same call — a world file still can't keep a `Session` reference, run
+  more than one, or hand control to anything else afterward. The loop
+  still `sleep`s one second after every turn. (EOF and Ctrl-C no longer
+  crash the process — see
+  [docs/ARCHITECTURE.md](ARCHITECTURE.md#session-libdmudsessionrb) — but
+  the constructor-never-returns design itself is unchanged and explicitly
+  out of scope for this batch.)
 
-## Portability
+### Documentation
 
-- **`require './...'` only works when run from the repo folder** ([#8](https://github.com/dtrammell/dmud/issues/8)). Every file loads its dependencies with a working-directory-relative `require`, so `ruby /path/to/dmud/test_game.rb` from somewhere else fails with a `LoadError`. You must `cd` into the repo first (see the [Quick start](../README.md#quick-start) in the README).
+- **There is still no "Build your first world" tutorial or generated API
+  reference** ([#10](https://github.com/dtrammell/dmud/issues/10), open).
+  This README/ARCHITECTURE/KNOWN_ISSUES set covers what exists today; a
+  hands-on tutorial is deferred until the constructor API settles (see
+  [#11](https://github.com/dtrammell/dmud/issues/11)).
 
-## Documentation and tooling
+## Planned design work (not yet implemented)
 
-- **There was no developer documentation before this change, and there's still no "Build your first world" tutorial or generated API reference** ([#10](https://github.com/dtrammell/dmud/issues/10)). This README/ARCHITECTURE/KNOWN_ISSUES set covers what exists today; a hands-on tutorial and YARD-style `@param`/`@return` comments are intentionally deferred until the constructor API settles (see [#11](https://github.com/dtrammell/dmud/issues/11)), so examples don't immediately go stale.
+These are forward-looking proposals, not bugs in the current code — listed
+separately from the quirks above so a reader doesn't mistake "not built
+yet" for "broken."
+
+- **Per-player display settings** ([#19](https://github.com/dtrammell/dmud/issues/19), open).
+  Letting a player choose classic (no screen clears) vs. modern (clear on
+  entering an Area) display, and ANSI color vs. monochrome, with the
+  setting traveling with the player through `Gate`s to other nodes. This
+  batch's screen-clear-at-the-start-of-traversal change
+  ([docs/ARCHITECTURE.md](ARCHITECTURE.md#gateenter-step-by-step)) keeps
+  clearing the screen as the hardcoded default specifically so this
+  setting can replace that default later; it is not configurable yet.
+- **Designer-registered custom commands with scope**
+  ([#22](https://github.com/dtrammell/dmud/issues/22), open). A proposed
+  API for world builders to register commands (e.g. `"pull lever"`)
+  scoped to an Area, Realm, or Node, with scope-aware tab completion. This
+  is a different feature from the existing, still-empty `:custom`
+  dispatch stub in `Player#command`, which was left as a placeholder for
+  a possible future *player*-macro system rather than *designer*-defined
+  commands. Open design questions include whether "Realm" is a renamed
+  `Region` or a new level above it.
+- **Cryptographic cross-node rule enforcement**
+  ([#23](https://github.com/dtrammell/dmud/issues/23), open). A proposal
+  for provable, consistent rule application across independent DMUD
+  nodes in the planned distributed model (canonical rulesets, signed
+  state-transition events, hash-linked history) — relevant once
+  networking and designer-defined commands exist, not relevant to the
+  single-process game described in this document today.
